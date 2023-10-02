@@ -1,0 +1,1 @@
+# Remove this file when adding songs and before using the Music Class!
