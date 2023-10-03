@@ -365,6 +365,9 @@ class PotCreate(Scene):
         # Sidebar tool options
         self.sidetools = []
 
+        # To ensure there's enough time in between holding buttons
+        self.held_delay = pygame.time.get_ticks()
+
     def input(self, pressed, held):
         for action in pressed:
             if action == pygame.MOUSEMOTION:
@@ -373,25 +376,35 @@ class PotCreate(Scene):
             if action == pygame.MOUSEBUTTONDOWN:
                 pass
 
-            if action == pygame.K_LEFT:
-                self.inverse_scale(self.build_area)
-                self.inverse_scale(self.pot)
-                self.zoom_index -= 1
-                self.zoom_detect = True
-            elif action == pygame.K_RIGHT:
-                self.inverse_scale(self.build_area)
-                self.inverse_scale(self.pot)
-                self.zoom_index += 1
-                self.zoom_detect = True
+            if not (held[pygame.K_w] or held[pygame.K_s] or
+                    held[pygame.K_a] or held[pygame.K_d]):
+                if action == pygame.K_LEFT:
+                    self.inverse_scale(self.build_area)
+                    self.inverse_scale(self.pot)
+                    self.zoom_index -= 1
+                    self.zoom_detect = True
+                elif action == pygame.K_RIGHT:
+                    self.inverse_scale(self.build_area)
+                    self.inverse_scale(self.pot)
+                    self.zoom_index += 1
+                    self.zoom_detect = True
 
-        if held[pygame.K_d]:
-            self.xpos -= 1
-        if held[pygame.K_a]:
-            self.xpos += 1
-        if held[pygame.K_w]:
-            self.ypos += 1
-        if held[pygame.K_s]:
-            self.ypos -= 1
+        if held[pygame.K_d] and \
+                50 < pygame.time.get_ticks() - self.held_delay:
+            self.xpos -= 4
+            self.held_delay = pygame.time.get_ticks()
+        if held[pygame.K_a] and \
+                50 < pygame.time.get_ticks() - self.held_delay:
+            self.xpos += 4
+            self.held_delay = pygame.time.get_ticks()
+        if held[pygame.K_w] and \
+                50 < pygame.time.get_ticks() - self.held_delay:
+            self.ypos += 4
+            self.held_delay = pygame.time.get_ticks()
+        if held[pygame.K_s] and \
+                50 < pygame.time.get_ticks() - self.held_delay:
+            self.ypos -= 4
+            self.held_delay = pygame.time.get_ticks()
 
     def update(self):
         if 5 < self.zoom_index:
@@ -451,6 +464,10 @@ class PotCreate(Scene):
 
     def scale_rect(self, in_rect):
         for each_rect in in_rect:
+            # For each rect, move the positioning to the center
+            each_rect.x -= (self.memory.res_width / 2)
+            each_rect.y -= (self.memory.res_height / 2)
+
             # Update the scaling of the rect position
             each_rect.x *= self.zoom_index
             each_rect.y *= self.zoom_index
@@ -458,6 +475,10 @@ class PotCreate(Scene):
             # Update the scaling of the rect size
             each_rect.width *= self.zoom_index
             each_rect.height *= self.zoom_index
+
+            # Undo the center positioning back (0,0) top left positioning
+            each_rect.x += (self.memory.res_width / 2)
+            each_rect.y += (self.memory.res_height / 2)
 
 
 class Program:
