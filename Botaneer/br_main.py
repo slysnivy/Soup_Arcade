@@ -390,20 +390,20 @@ class PotCreate(Scene):
                     self.zoom_detect = True
 
         if held[pygame.K_d] and \
-                50 < pygame.time.get_ticks() - self.held_delay:
-            self.xpos -= 4
+                25 < pygame.time.get_ticks() - self.held_delay:
+            self.xpos -= 9
             self.held_delay = pygame.time.get_ticks()
         if held[pygame.K_a] and \
-                50 < pygame.time.get_ticks() - self.held_delay:
-            self.xpos += 4
+                25 < pygame.time.get_ticks() - self.held_delay:
+            self.xpos += 9
             self.held_delay = pygame.time.get_ticks()
         if held[pygame.K_w] and \
-                50 < pygame.time.get_ticks() - self.held_delay:
-            self.ypos += 4
+                25 < pygame.time.get_ticks() - self.held_delay:
+            self.ypos += 8
             self.held_delay = pygame.time.get_ticks()
         if held[pygame.K_s] and \
-                50 < pygame.time.get_ticks() - self.held_delay:
-            self.ypos -= 4
+                25 < pygame.time.get_ticks() - self.held_delay:
+            self.ypos -= 8
             self.held_delay = pygame.time.get_ticks()
 
     def update(self):
@@ -469,8 +469,8 @@ class PotCreate(Scene):
             each_rect.y -= (self.memory.res_height / 2)
 
             # Update the scaling of the rect position
-            each_rect.x *= self.zoom_index
-            each_rect.y *= self.zoom_index
+            each_rect.x = math.ceil(each_rect.x * self.zoom_index)
+            each_rect.y = math.ceil(each_rect.y * self.zoom_index)
 
             # Update the scaling of the rect size
             each_rect.width *= self.zoom_index
@@ -559,9 +559,9 @@ class Program:
                 scene.update()  # Call to dynamically use/update/check changes
                 scene.render(screen)    # Visually render desired graphics
                 scene = scene.this_scene
-                """This line is important to allow changing scenes (if 
-                this_scene is different like using 
-                scene.change_scene(next_scene). Otherwise, scene will not be 
+                """This line is important to allow changing scenes (if
+                this_scene is different like using
+                scene.change_scene(next_scene). Otherwise, scene will not be
                 changed and will continue being this scene (same memory
                 address, no change)."""
 
