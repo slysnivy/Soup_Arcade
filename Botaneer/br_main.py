@@ -373,19 +373,41 @@ class PotCreate(Scene):
             if action == pygame.MOUSEMOTION:
                 self.update_mouse()
 
-            if action == pygame.MOUSEBUTTONDOWN:
-                pass
+            if action == pygame.MOUSEBUTTONDOWN and \
+                    self.cursor_rect is not None:
+                if self.cursor_rect.collidelistall(self.pot):
+                    closest_rect = self.closest_rects(self, self.cursor_rect,
+                                                      self.pot)
+
+                    if closest_rect is not None:
+                        self.pot.remove(closest_rect)
+
+                elif self.cursor_rect.collidelistall(self.build_area):
+                    closest_rect = self.closest_rects(self, self.cursor_rect,
+                                                      self.build_area)
+
+                    """Need to make a new rect as to avoid linking 
+                    the same rect multiple times to avoid repetition in
+                    changing rect properties"""
+                    if closest_rect is not None and \
+                            closest_rect not in self.pot:
+                        self.pot += [pygame.Rect(closest_rect.x,
+                                                 closest_rect.y,
+                                                 closest_rect.width,
+                                                 closest_rect.height)]
 
             if not (held[pygame.K_w] or held[pygame.K_s] or
                     held[pygame.K_a] or held[pygame.K_d]):
                 if action == pygame.K_LEFT:
-                    self.inverse_scale(self.build_area)
                     self.inverse_scale(self.pot)
+                    self.inverse_scale(self.build_area)
+
                     self.zoom_index -= 1
                     self.zoom_detect = True
                 elif action == pygame.K_RIGHT:
-                    self.inverse_scale(self.build_area)
                     self.inverse_scale(self.pot)
+                    self.inverse_scale(self.build_area)
+
                     self.zoom_index += 1
                     self.zoom_detect = True
 
@@ -413,12 +435,13 @@ class PotCreate(Scene):
             self.zoom_index = 5
 
         if self.zoom_detect:
-            self.scale_rect(self.build_area)
             self.scale_rect(self.pot)
+            self.scale_rect(self.build_area)
             self.zoom_detect = not self.zoom_detect
 
-        self.update_rect(self.build_area)
         self.update_rect(self.pot)
+        self.update_rect(self.build_area)
+
         self.xpos = 0
         self.ypos = 0
 
@@ -479,6 +502,23 @@ class PotCreate(Scene):
             # Undo the center positioning back (0,0) top left positioning
             each_rect.x += (self.memory.res_width / 2)
             each_rect.y += (self.memory.res_height / 2)
+
+    @staticmethod
+    def closest_rects(self, current_rect, compare_rects):
+        r_index = current_rect.collidelistall(compare_rects)
+        closest_rect = None
+
+        for each_index in r_index:
+            if closest_rect is None:
+                closest_rect = compare_rects[each_index]
+            elif abs(compare_rects[each_index].x -
+                     current_rect.x) < \
+                    abs(closest_rect.x - current_rect.x) and \
+                    abs(compare_rects[each_index].y -
+                        current_rect.y) < \
+                    abs(closest_rect.y - current_rect.y):
+                closest_rect = compare_rects[each_index]
+        return closest_rect
 
 
 class Program:
