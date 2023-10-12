@@ -362,8 +362,35 @@ class PotCreate(Scene):
         self.cursor_rect = None
         self.update_mouse()
 
+        # Image icons loaded from images file
+        self.sidetool_icons = []
+
+        # Rect objects for click detection
+        self.sidetool_rects = []
+
+        # Toggle if sidetool is rendered, if I want to hide the bar in future
+        self.sidetool_toggle = False
+
+        # Index determining which tool the user is using
+        self.tool_index = 0
+
+        # Actions when player interacts with the icons, related to tool_index
+        self.sidetool_actions = {
+            0: self.add_pot, 1: self.remove_pot,
+            2: self.zoom_in, 3: self.zoom_out
+        }
+
         # Sidebar tool options
-        self.sidetools = []
+        """ Currently the options are (according to index)
+        0: adding a pot piece 
+        1: removing a pot piece
+        2: zooming in
+        3: zooming out
+        """
+
+        # Load icons
+        self.load_sideicons()
+        self.make_sidetool()
 
         # To ensure there's enough time in between holding buttons
         self.held_delay = pygame.time.get_ticks()
@@ -373,43 +400,33 @@ class PotCreate(Scene):
             if action == pygame.MOUSEMOTION:
                 self.update_mouse()
 
+            # Mouse collision on loaded rects
             if action == pygame.MOUSEBUTTONDOWN and \
                     self.cursor_rect is not None:
-                if self.cursor_rect.collidelistall(self.pot):
-                    closest_rect = self.closest_rects(self, self.cursor_rect,
-                                                      self.pot)
+                # On mouse click, change index first, then apply action
+                if self.cursor_rect.collidelistall(self.sidetool_rects):
+                    # Clicking the various icons on the sidetool to change index
+                    closest_rect = self.closest_rects(self.cursor_rect,
+                                                      self.sidetool_rects)
 
                     if closest_rect is not None:
-                        self.pot.remove(closest_rect)
+                        self.tool_index = self.sidetool_rects.index(closest_rect)
 
-                elif self.cursor_rect.collidelistall(self.build_area):
-                    closest_rect = self.closest_rects(self, self.cursor_rect,
-                                                      self.build_area)
+                if self.cursor_rect.collidelistall(self.build_area) and not \
+                        self.cursor_rect.collidelistall(self.sidetool_rects):
+                    # Build pot when clicking on the build grid
+                    self.sidetool_actions[self.tool_index]()
 
-                    """Need to make a new rect as to avoid linking 
-                    the same rect multiple times to avoid repetition in
-                    changing rect properties"""
-                    if closest_rect is not None and \
-                            closest_rect not in self.pot:
-                        self.pot += [pygame.Rect(closest_rect.x,
-                                                 closest_rect.y,
-                                                 closest_rect.width,
-                                                 closest_rect.height)]
+                elif self.cursor_rect.collidelistall(self.pot) and not \
+                        self.cursor_rect.collidelistall(self.sidetool_rects):
+                    # Remove pot piece when clicking on build grid
+                    self.sidetool_actions[self.tool_index]()
 
-            if not (held[pygame.K_w] or held[pygame.K_s] or
-                    held[pygame.K_a] or held[pygame.K_d]):
-                if action == pygame.K_LEFT:
-                    self.inverse_scale(self.pot)
-                    self.inverse_scale(self.build_area)
-
-                    self.zoom_index -= 1
-                    self.zoom_detect = True
-                elif action == pygame.K_RIGHT:
-                    self.inverse_scale(self.pot)
-                    self.inverse_scale(self.build_area)
-
-                    self.zoom_index += 1
-                    self.zoom_detect = True
+                elif self.cursor_rect.collidelistall(self.sidetool_rects) and \
+                        1 < self.tool_index:
+                    # Other options for instant reproducable action when click
+                    self.cursor_rect.collidelistall(self.sidetool_rects)
+                    self.sidetool_actions[self.tool_index]()
 
         if held[pygame.K_d] and \
                 25 < pygame.time.get_ticks() - self.held_delay:
@@ -465,6 +482,52 @@ class PotCreate(Scene):
                               each_rect.width,
                               each_rect.height])
 
+        self.render_sidebar(screen)
+        # Highlight selected icon
+        pygame.draw.rect(screen, YELLOW,
+                         self.sidetool_rects[self.tool_index], 2)
+
+    def add_pot(self):
+        """ Sidetool icon action that adds a pixel to the pot when clicked on"""
+        closest_rect = self.closest_rects(self.cursor_rect,
+                                          self.build_area)
+
+        """Need to make a new rect as to avoid linking 
+        the same rect multiple times to avoid repetition in
+        changing rect properties"""
+        if closest_rect is not None and \
+                closest_rect not in self.pot:
+            self.pot += [pygame.Rect(closest_rect.x,
+                                     closest_rect.y,
+                                     closest_rect.width,
+                                     closest_rect.height)]
+
+    def remove_pot(self):
+        """ Sidetool icon action that removes a pixel from the pot
+        when clicked on"""
+        closest_rect = self.closest_rects(self.cursor_rect,
+                                          self.pot)
+
+        if closest_rect is not None:
+            self.pot.remove(closest_rect)
+        pass
+
+    def zoom_in(self):
+        """ Sidetool icon action that zooms in when clicked on"""
+        self.inverse_scale(self.pot)
+        self.inverse_scale(self.build_area)
+
+        self.zoom_index += 1
+        self.zoom_detect = True
+
+    def zoom_out(self):
+        """ Sidetool icon action that zooms out when clicked on"""
+        self.inverse_scale(self.pot)
+        self.inverse_scale(self.build_area)
+
+        self.zoom_index -= 1
+        self.zoom_detect = True
+
     def update_mouse(self):
         self.mouse_x = pygame.mouse.get_pos()[0]
         self.mouse_y = pygame.mouse.get_pos()[1]
@@ -503,13 +566,50 @@ class PotCreate(Scene):
             each_rect.x += (self.memory.res_width / 2)
             each_rect.y += (self.memory.res_height / 2)
 
+    def render_sidebar(self, screen):
+        for icon_index in range(len(self.sidetool_rects)):
+            pygame.draw.rect(screen, BLACK, self.sidetool_rects[icon_index])
+            screen.blit(self.sidetool_icons[icon_index],
+                        self.sidetool_rects[icon_index])
+
+    def load_sideicons(self):
+        folder_path = "images/"
+        images_path = os.listdir(folder_path)
+        for each_image in images_path:
+            self.sidetool_icons += [pygame.image.load(folder_path + each_image)]
+
+    def make_sidetool(self):
+        """ Make each option icon 20 x 20, sidebar should be 40 x 20(n),
+         where n stands for the height of the sidebar"""
+
+        # Distance the sidebar is from the right side
+        right_dist = 80 * self.memory.scale
+        # Icon size, assuming the icon is a perfect square (width == height)
+        icon_size = 40 * self.memory.scale
+
+        # Declare x position as - 60 to make room for 2 icons per row
+        xpos = (self.memory.res_width - right_dist) * self.memory.scale
+        # Start at the top of the screen
+        ypos = 40 * self.memory.scale
+
+        for icons in range(len(self.sidetool_icons)):
+            self.sidetool_rects += [pygame.Rect(xpos, ypos,
+                                           icon_size, icon_size)]
+            if self.memory.res_width - (right_dist - icon_size) <= xpos:
+                xpos = self.memory.res_width - right_dist
+                ypos += icon_size
+            else:
+                xpos += icon_size
+
     @staticmethod
-    def closest_rects(self, current_rect, compare_rects):
+    def closest_rects(current_rect, compare_rects):
         r_index = current_rect.collidelistall(compare_rects)
-        closest_rect = None
+        # Get list of indices of all colliding rectangles
+        closest_rect = None     # Initialize closest rect
 
         for each_index in r_index:
             if closest_rect is None:
+                # Initialize first rect object
                 closest_rect = compare_rects[each_index]
             elif abs(compare_rects[each_index].x -
                      current_rect.x) < \
@@ -517,8 +617,9 @@ class PotCreate(Scene):
                     abs(compare_rects[each_index].y -
                         current_rect.y) < \
                     abs(closest_rect.y - current_rect.y):
+                # Compare with next rect, new rect has smaller x and y dist
                 closest_rect = compare_rects[each_index]
-        return closest_rect
+        return closest_rect     # None if no rect, otherwise give pygame.Rect
 
 
 class Program:
@@ -557,7 +658,6 @@ class Program:
 
         Finally, this is where FPS is set and where the display is updated.
         """
-        #self.memory.screen = pygame.display.set_mode([width, height])
         screen = pygame.display.set_mode([width, height])  # Set screen size
 
         pygame.scrap.init()
