@@ -3,6 +3,7 @@ import random
 import os
 import math
 
+# BASE COLORS
 DARK_RED = (139, 0, 0)
 YELLOW = (235, 195, 65)
 BLACK = (0, 0, 0)
@@ -20,6 +21,12 @@ PURPLE = (181, 60, 177)
 BROWN = (150, 75, 0)
 DARK_GREY = (52, 52, 52)
 
+# PLANT COLORS
+LIMER_GREEN = (100, 255, 10)
+SWAMP_GREEN = (110, 195, 65)
+FOREST_GREEN = (50, 110, 50)
+RADIANT_GREEN = (16, 163, 16)
+PASTEL_GREEN = (100, 200, 100)
 
 class Memory:
     """
@@ -412,12 +419,14 @@ class PotCreate(Scene):
                     if closest_rect is not None:
                         self.tool_index = self.sidetool_rects.index(closest_rect)
 
-                if self.cursor_rect.collidelistall(self.build_area) and not \
+                if self.cursor_rect.collidelistall(self.build_area) and \
+                        self.tool_index < 2 and not \
                         self.cursor_rect.collidelistall(self.sidetool_rects):
                     # Build pot when clicking on the build grid
                     self.sidetool_actions[self.tool_index]()
 
-                elif self.cursor_rect.collidelistall(self.pot) and not \
+                elif self.cursor_rect.collidelistall(self.pot) and \
+                        self.tool_index < 2 and not \
                         self.cursor_rect.collidelistall(self.sidetool_rects):
                     # Remove pot piece when clicking on build grid
                     self.sidetool_actions[self.tool_index]()
@@ -620,6 +629,160 @@ class PotCreate(Scene):
                 # Compare with next rect, new rect has smaller x and y dist
                 closest_rect = compare_rects[each_index]
         return closest_rect     # None if no rect, otherwise give pygame.Rect
+
+
+class PlantMechanics:
+    """
+    Should have two main functions for growth:
+        - Grow: which grows the length of this part in a specified direction
+        - Thicken: which will age the part by growing all associated segments
+            perpendicular to the grow direction
+    Both grow and thicken will occur symmetrically
+    """
+    def __init__(self):
+        self.growth_list = LinkedTree()
+
+    def grow(self, item):
+        """
+        Grow plant parallel to the growing direction
+        """
+        self.growth_list.append_right(item)
+
+    def thicken(self, item1, item2):
+        """
+        Grow plant perpendicular to the growing direction
+        :return:
+        """
+        head = self.growth_list.head
+        while head is not None:
+            head.item.append_left(item1)
+            head.item.append_right(item2)
+            head = head.next
+
+
+class Plant(PlantMechanics):
+    def __init__(self, x_pos, y_pos):
+        """ a text
+        b text
+
+
+        """
+        self.age = 0                # How old the plant is
+        self.max_age = 0            # Initialize how long the plant will grow
+        self.growth_factor = 1      # How fast the plant will grow
+        self.branching_freq = 0     # Determine how many branches occur
+        self.leaf_freq = 0          # How many leaves present in a spot
+
+        PlantMechanics.__init__(self)   # Initialize basic mechanics
+        self.growth_list.append_right(Stem())   # always start with stems
+
+        self.x_pos = x_pos  # x pos of where the plant will start growing
+        self.y_pos = y_pos  # y pos of where the plant will start growing
+
+        # todo: Make methods of plant growth for Stem, Branch and Leave
+
+
+class Stem(PlantMechanics):
+    def __init__(self):
+        PlantMechanics.__init__(self)   # Initialize basic mechanics
+        # Contains branches and plant pixels
+
+    def grow(self, item):
+        """
+        Grow plant parallel to the growing direction
+        """
+        PlantMechanics.grow(self, item)
+
+    def thicken(self, item1, item2):
+        """
+        Grow plant perpendicular to the growing direction
+        """
+        PlantMechanics.thicken(self, item1, item2)
+
+
+class Branch(Stem):
+    def __init__(self):
+        PlantMechanics.__init__(self)   # Initialize basic mechanics
+        # Contains leaves and plant pixels
+
+    def grow(self, item):
+        """
+        Grow plant parallel to the growing direction
+        """
+        PlantMechanics.grow(self, item)
+
+    def thicken(self, item1, item2):
+        """
+        Grow plant perpendicular to the growing direction
+        """
+        PlantMechanics.thicken(self, item1, item2)
+
+
+class Leaves:
+    pass
+
+
+class PlantPixel:
+    """
+    Defining a pixels color, size and position
+    A pixels size is usually 9 x 8 by default without scaling
+    """
+    def __init__(self, x_pos, y_pos, width, height, color):
+        self.x_pos = x_pos
+        self.y_pos = y_pos
+        self.width = width
+        self.height = height
+        self.color = color
+
+    # In the future, need to return x, y, width, height, and color values
+    # In the future, need to update x, y, width, height, and color values
+
+
+class LinkedTree:
+    def __init__(self):
+        self.head = None    # Left pointer
+        self.tail = None    # Right pointer
+
+    def append_left(self, item):
+        if self.head is None and self.tail is None:
+            # Regardless of left/right, initialize 1 Node
+            self.head = TreeNode(item)
+            self.tail = self.head
+        else:
+            new_node = TreeNode(item)   # Make a new Node
+            new_node.next = self.head   # Node to leftmost, put list to right
+            self.head = new_node        # Make Node new start/head
+
+    def append_right(self, item):
+        if self.head is None and self.tail is None:
+            # Regardless of left/right, initialize 1 Node
+            self.head = TreeNode(item)
+            self.tail = self.head
+        else:
+            new_node = TreeNode(item)   # Make a new Node
+            self.tail.next = new_node   # Node to the right of tail
+            self.tail = self.tail.next  # Make rightmost Node the new tail
+
+    def check_len(self):
+        check_node = self.head
+        count = 0
+        while check_node is not None:
+            count += 1
+            check_node = check_node.next
+
+        return count
+
+    def check_chain(self):
+        check_node = self.head
+        while check_node is not None:
+            print("mem_id: " + str(id(check_node)))
+            check_node = check_node.next
+
+
+class TreeNode:
+    def __init__(self, item):
+        self.item = item
+        self.next = None
 
 
 class Program:
