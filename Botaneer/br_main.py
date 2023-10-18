@@ -402,6 +402,9 @@ class PotCreate(Scene):
         # To ensure there's enough time in between holding buttons
         self.held_delay = pygame.time.get_ticks()
 
+        # Toggle when to update the valid soil area
+        self.toggle_soil = False
+
     def input(self, pressed, held):
         for action in pressed:
             if action == pygame.MOUSEMOTION:
@@ -437,6 +440,8 @@ class PotCreate(Scene):
                     self.cursor_rect.collidelistall(self.sidetool_rects)
                     self.sidetool_actions[self.tool_index]()
 
+                self.toggle_soil = True
+
         if held[pygame.K_d] and \
                 25 < pygame.time.get_ticks() - self.held_delay:
             self.xpos -= 9
@@ -467,6 +472,10 @@ class PotCreate(Scene):
 
         self.update_rect(self.pot)
         self.update_rect(self.build_area)
+
+        if self.toggle_soil:
+            self.pot_soil()
+            self.toggle_soil = not self.toggle_soil
 
         self.xpos = 0
         self.ypos = 0
@@ -603,12 +612,122 @@ class PotCreate(Scene):
 
         for icons in range(len(self.sidetool_icons)):
             self.sidetool_rects += [pygame.Rect(xpos, ypos,
-                                           icon_size, icon_size)]
+                                    icon_size, icon_size)]
             if self.memory.res_width - (right_dist - icon_size) <= xpos:
                 xpos = self.memory.res_width - right_dist
                 ypos += icon_size
             else:
                 xpos += icon_size
+
+    def get_rows(self):
+        rect_rows = {}  # Split the rect into rows
+
+        for rect in self.pot:
+            if rect.y not in rect_rows:
+                rect_rows[rect.y] = [rect.x]
+            else:
+                rect_rows[rect.y] += [rect.x]
+
+        return rect_rows
+
+    def get_gaps(self):
+        """ In the perspective of rows, get the pair creating a gap in the pot
+        """
+        rect_rows = self.get_rows()
+
+        # Find the rects that make the largest gaps
+        get_gaps = {}
+        row_y = list(rect_rows.keys())  # Get the rows
+        for y in row_y:
+            current_row = rect_rows[y]
+            current_row.sort()
+            for x_index in range(len(current_row) - 1):
+                if 9 * self.zoom_index <= current_row[x_index + 1] - \
+                        current_row[x_index]:
+                    if y not in get_gaps:
+                        get_gaps[y] = [[current_row[x_index],
+                                         current_row[x_index + 1]]]
+                    else:
+                        get_gaps[y] += [[current_row[x_index],
+                                 current_row[x_index + 1]]]
+
+        return get_gaps
+
+    def validate_pot(self):
+        # todo: redo get_pot() and turn into get_sides()
+        """ In the perspective of rows, get the pair creating a gap in the pot
+                """
+        if len(self.pot) < 1:
+            return False
+
+        rect_rows = self.get_gaps()
+
+        # Validate if pairs exist:
+        row_y = list(rect_rows.keys())  # Get the rows
+        last_y = None
+
+        # Check if there are valid sides
+        for y in row_y:
+            if last_y is None:
+                last_y = y
+            elif y == last_y + (8 * self.zoom_index):
+                return False
+            else:
+                last_y = y
+
+        # Check if the base is valid
+        valid_bases = self.get_base()
+        if len(valid_bases) < 1:
+            return False
+
+        return True
+
+    def get_base(self):
+        if len(self.pot) < 1:
+            return False
+
+        rect_rows = self.get_rows()
+
+        # Validate if pairs exist:
+        row_y = list(rect_rows.keys())  # Get the rows
+
+        valid_bases = {}
+        for y in row_y:
+            bases = []
+            for rect_index in range(len(rect_rows[y]) - 1):
+                if rect_rows[y][rect_index + 1] - \
+                        rect_rows[y][rect_index] <= math.floor(9 * self.zoom_index):
+                    if len(bases) < 1:
+                        bases += [rect_rows[y][rect_index]]
+
+                    bases += [rect_rows[y][rect_index + 1]]
+                else:
+                    if 3 < len(bases):
+                        if y not in valid_bases:
+                            valid_bases[y] = bases
+                        else:
+                            valid_bases[y] += [bases]
+                    bases = []
+
+            if 3 < len(bases):
+                if y not in valid_bases:
+                    valid_bases[y] = bases
+                else:
+                    valid_bases[y] += [bases]
+
+        print(valid_bases)
+        return valid_bases
+
+    def pot_soil(self):
+        """
+        Render a valid pot zone
+        """
+        if self.validate_pot():
+            print("Valid")
+            # todo: today
+
+    def render_soil(self, screen):
+        pass
 
     @staticmethod
     def closest_rects(current_rect, compare_rects):
@@ -639,8 +758,16 @@ class PlantMechanics:
             perpendicular to the grow direction
     Both grow and thicken will occur symmetrically
     """
-    def __init__(self):
+    def __init__(self, x_pos, y_pos):
         self.growth_list = LinkedTree()
+        # Hold a type of plant segment
+        self.random_event = pygame.time.get_ticks()
+        # Timer for next random event
+
+        self.x_pos = x_pos  # x pos of where the plant will start growing
+        self.y_pos = y_pos  # y pos of where the plant will start growing
+
+        self.direction = 0
 
     def grow(self, item):
         """
@@ -659,6 +786,9 @@ class PlantMechanics:
             head.item.append_right(item2)
             head = head.next
 
+    def update(self):
+        pass
+
 
 class Plant(PlantMechanics):
     def __init__(self, x_pos, y_pos):
@@ -673,19 +803,36 @@ class Plant(PlantMechanics):
         self.branching_freq = 0     # Determine how many branches occur
         self.leaf_freq = 0          # How many leaves present in a spot
 
-        PlantMechanics.__init__(self)   # Initialize basic mechanics
-        self.growth_list.append_right(Stem())   # always start with stems
-
-        self.x_pos = x_pos  # x pos of where the plant will start growing
-        self.y_pos = y_pos  # y pos of where the plant will start growing
+        PlantMechanics.__init__(self, x_pos, y_pos)   # Basic mechanics
+        self.growth_list.append_right(Stem(x_pos, y_pos))   # Start w/ stems
 
         # todo: Make methods of plant growth for Stem, Branch and Leave
 
+    def grow(self, item):
+        """
+        Grow plant parallel to the growing direction
+        """
+        PlantMechanics.grow(self, item)
+
+    def thicken(self, item1, item2):
+        """
+        Grow plant perpendicular to the growing direction
+        """
+        PlantMechanics.thicken(self, item1, item2)
+
+    def update(self):
+        time_to_grow = 3000  # todo: Randomize in future
+        if time_to_grow < pygame.time.get_ticks() - self.random_event:
+            self.x_pos += 9
+            self.y_pos += 8
+            self.grow(Stem(self.x_pos, self.y_pos))
+
 
 class Stem(PlantMechanics):
-    def __init__(self):
-        PlantMechanics.__init__(self)   # Initialize basic mechanics
+    def __init__(self, x_pos, y_pos):
+        PlantMechanics.__init__(self, x_pos, y_pos)   # Basic mechanics
         # Contains branches and plant pixels
+        self.pixel = PlantPixel(x_pos, y_pos, 9, 8, DARK_GREEN)
 
     def grow(self, item):
         """
@@ -701,9 +848,10 @@ class Stem(PlantMechanics):
 
 
 class Branch(Stem):
-    def __init__(self):
-        PlantMechanics.__init__(self)   # Initialize basic mechanics
+    def __init__(self, x_pos, y_pos):
+        PlantMechanics.__init__(self, x_pos, y_pos)   # Basic mechanics
         # Contains leaves and plant pixels
+        self.pixel = PlantPixel(x_pos, y_pos, 9, 8, LIMER_GREEN)
 
     def grow(self, item):
         """
