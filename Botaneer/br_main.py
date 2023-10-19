@@ -28,6 +28,10 @@ FOREST_GREEN = (50, 110, 50)
 RADIANT_GREEN = (16, 163, 16)
 PASTEL_GREEN = (100, 200, 100)
 
+# SOIL
+LIGHT_BROWN = (75, 50, 25)
+
+
 class Memory:
     """
     Class used to store data across game instances
@@ -405,6 +409,9 @@ class PotCreate(Scene):
         # Toggle when to update the valid soil area
         self.toggle_soil = False
 
+        # Rects describing soil area
+        self.soil_area = []
+
     def input(self, pressed, held):
         for action in pressed:
             if action == pygame.MOUSEMOTION:
@@ -420,7 +427,8 @@ class PotCreate(Scene):
                                                       self.sidetool_rects)
 
                     if closest_rect is not None:
-                        self.tool_index = self.sidetool_rects.index(closest_rect)
+                        self.tool_index = self.sidetool_rects.index(
+                            closest_rect)
 
                 if self.cursor_rect.collidelistall(self.build_area) and \
                         self.tool_index < 2 and not \
@@ -468,10 +476,12 @@ class PotCreate(Scene):
         if self.zoom_detect:
             self.scale_rect(self.pot)
             self.scale_rect(self.build_area)
+            self.scale_rect(self.soil_area)
             self.zoom_detect = not self.zoom_detect
 
         self.update_rect(self.pot)
         self.update_rect(self.build_area)
+        self.update_rect(self.soil_area)
 
         if self.toggle_soil:
             self.pot_soil()
@@ -505,6 +515,8 @@ class PotCreate(Scene):
         pygame.draw.rect(screen, YELLOW,
                          self.sidetool_rects[self.tool_index], 2)
 
+        self.render_soil(screen)    # Render valid soil area
+
     def add_pot(self):
         """ Sidetool icon action that adds a pixel to the pot when clicked on"""
         closest_rect = self.closest_rects(self.cursor_rect,
@@ -534,6 +546,7 @@ class PotCreate(Scene):
         """ Sidetool icon action that zooms in when clicked on"""
         self.inverse_scale(self.pot)
         self.inverse_scale(self.build_area)
+        self.inverse_scale(self.soil_area)
 
         self.zoom_index += 1
         self.zoom_detect = True
@@ -542,6 +555,7 @@ class PotCreate(Scene):
         """ Sidetool icon action that zooms out when clicked on"""
         self.inverse_scale(self.pot)
         self.inverse_scale(self.build_area)
+        self.inverse_scale(self.soil_area)
 
         self.zoom_index -= 1
         self.zoom_detect = True
@@ -628,61 +642,50 @@ class PotCreate(Scene):
             else:
                 rect_rows[rect.y] += [rect.x]
 
+        for y in rect_rows:
+            rect_rows[y] = sorted(rect_rows[y])
+
         return rect_rows
 
-    def get_gaps(self):
+    def get_columns(self):
+        rect_columns = {}
+
+        # Find the rects that make the largest gaps
+        for rect in self.pot:
+            if rect.x not in rect_columns:
+                rect_columns[rect.x] = [rect.y]
+            else:
+                rect_columns[rect.x] = [rect.y]
+
+        return rect_columns
+
+    def get_sides(self):
         """ In the perspective of rows, get the pair creating a gap in the pot
         """
         rect_rows = self.get_rows()
+        rect_y = list(rect_rows.keys())
 
-        # Find the rects that make the largest gaps
-        get_gaps = {}
-        row_y = list(rect_rows.keys())  # Get the rows
-        for y in row_y:
-            current_row = rect_rows[y]
-            current_row.sort()
-            for x_index in range(len(current_row) - 1):
-                if 9 * self.zoom_index <= current_row[x_index + 1] - \
-                        current_row[x_index]:
-                    if y not in get_gaps:
-                        get_gaps[y] = [[current_row[x_index],
-                                         current_row[x_index + 1]]]
+        valid_gaps = {}
+        for y in rect_y:
+            current_left = None
+            current_right = None
+            for x_ind in range(len(rect_rows[y]) - 1):
+                if current_left is None and \
+                        rect_rows[y][x_ind] + (9 * self.zoom_index) != \
+                        rect_rows[y][x_ind + 1]:
+                    current_left = rect_rows[y][x_ind]
+                    current_right = rect_rows[y][x_ind + 1]
+                if current_left is not None:
+                    if y not in valid_gaps:
+                        valid_gaps[y] = [[current_left, current_right]]
                     else:
-                        get_gaps[y] += [[current_row[x_index],
-                                 current_row[x_index + 1]]]
+                        valid_gaps[y] += [[current_left, current_right]]
+                    current_left = None
+                    current_right = None
 
-        return get_gaps
+        return valid_gaps
 
-    def validate_pot(self):
-        # todo: redo get_pot() and turn into get_sides()
-        """ In the perspective of rows, get the pair creating a gap in the pot
-                """
-        if len(self.pot) < 1:
-            return False
-
-        rect_rows = self.get_gaps()
-
-        # Validate if pairs exist:
-        row_y = list(rect_rows.keys())  # Get the rows
-        last_y = None
-
-        # Check if there are valid sides
-        for y in row_y:
-            if last_y is None:
-                last_y = y
-            elif y == last_y + (8 * self.zoom_index):
-                return False
-            else:
-                last_y = y
-
-        # Check if the base is valid
-        valid_bases = self.get_base()
-        if len(valid_bases) < 1:
-            return False
-
-        return True
-
-    def get_base(self):
+    def get_bases(self):
         if len(self.pot) < 1:
             return False
 
@@ -692,42 +695,190 @@ class PotCreate(Scene):
         row_y = list(rect_rows.keys())  # Get the rows
 
         valid_bases = {}
+        pot_width_min = 2
         for y in row_y:
             bases = []
             for rect_index in range(len(rect_rows[y]) - 1):
                 if rect_rows[y][rect_index + 1] - \
-                        rect_rows[y][rect_index] <= math.floor(9 * self.zoom_index):
+                        rect_rows[y][rect_index] <= \
+                        math.floor(9 * self.zoom_index):
                     if len(bases) < 1:
                         bases += [rect_rows[y][rect_index]]
 
                     bases += [rect_rows[y][rect_index + 1]]
                 else:
-                    if 3 < len(bases):
+                    if (pot_width_min < len(bases) and
+                        len(valid_bases) < 1) or \
+                            (2 < len(bases) and 0 < len(valid_bases)):
                         if y not in valid_bases:
-                            valid_bases[y] = bases
+                            valid_bases[y] = [bases]
                         else:
                             valid_bases[y] += [bases]
                     bases = []
 
-            if 3 < len(bases):
+            if (pot_width_min < len(bases) and len(valid_bases) < 1) or \
+                    (2 < len(bases) and 0 < len(valid_bases)):
                 if y not in valid_bases:
-                    valid_bases[y] = bases
+                    valid_bases[y] = [bases]
                 else:
                     valid_bases[y] += [bases]
 
-        print(valid_bases)
         return valid_bases
+
+    def validate_pot(self):
+        # todo: redo get_pot() and turn into get_sides()
+        """ In the perspective of rows, get the pair creating a gap in the pot
+                """
+        if len(self.pot) < 1:
+            return False
+
+        valid_sides = self.get_sides()
+        if len(valid_sides) < 1:
+            return False
+
+        # Check if the base is valid
+        valid_bases = self.get_bases()
+        if len(valid_bases) < 1:
+            return False
+
+        return True
+
+    def find_area(self, all_sides, all_bases):
+        """
+        Start with a loop of bases, need to get all_bases.keys
+        From each base's y position, check two things (if):
+            - at the y_val, check bases at the [0] and [-1] indexes,
+                go upwards aka y_val - (8 * self.zoom_index), check if the y_val
+                is present, and check each side pair at the [0] and [1]
+                indexes and see if their x-values match
+            - AT THIS POINT, the x-values need to match, aka a corner forming
+                between the base and side starting point
+
+        Put valid_potential corners in their own list as this:
+            valid_corners = {}
+            valid_corners[y_val - (8 - self.zoom_index)] = \
+                all_sides[y_val - (8 - self.zoom_index)]
+
+        After confirming valid corner points, we confirm that this is a valid
+        pot base with an opening on the top. We want to now find the gaps that
+        precede this.
+        To start, we need to traverse the sides starting at the y_val
+        in valid_corners. We need to check at the current y_val in sides and
+        check for each pair:
+            - If the y_val - (8 * self.zoom_index) x_values matches, or at
+                that x_values + and - (9 * self.zoom_index)
+            - If so, then iterate the current y_val by - (8 * self.zoom_index)
+            - If there isn't a rect at y_val - (8 * self.zoom_index), then we
+            reached the end of our pot top, but need to confirm that we're at
+            a lip and not hitting another base
+            (aka, confirm that this is a lip opening and not an enclosed space)
+
+            To check, we need to see at this y_val, if the
+            sides[y_val][pair_iter] [0] and [1], check if the
+            y_val - (8 * self.zoom_index) exists in bases. Then see if it
+            matches with the [0] and [-1] in
+            bases[y_val - (8 * self.zoom_index)]. If they match,
+            then this potential pot area is enclosed and invalid.
+            Therefore we look for if they don't match, and if it doesn't
+            add it to pot_gaps, aka the region defining a valid gap and
+            passing the pot test. We'd like to define this as a class
+            variable since it'll be rendered as well.
+
+        :param all_sides:
+        :param all_bases:
+        :return:
+        """
+        valid_corners = {}
+        base_y = list(all_bases.keys())
+        for y in base_y:
+            for current_base in all_bases[y]:
+                if y - (8 * self.zoom_index) in all_sides:
+                    for pair in all_sides[y - (8 * self.zoom_index)]:
+                        if pair[0] in current_base and \
+                                pair[1] in current_base:
+                            if y - (8 * self.zoom_index) not in valid_corners:
+                                valid_corners[y - (8 * self.zoom_index)] = [pair]
+                            else:
+                                valid_corners[y - (8 * self.zoom_index)] += [pair]
+
+        corner_y = list(valid_corners.keys())
+        print(valid_corners)
+        pot_area = []   # todo: make a class to store PotArea 's
+        emergency_break = 0
+        for y in corner_y:
+            current_y = y
+            potential_gaps = {}
+            for current_pair in valid_corners[y]:
+                while current_y in all_sides:
+                    for pair in all_sides[current_y]:
+                        if pair[0] <= current_pair[0] + \
+                                (9 * self.zoom_index) and \
+                                current_pair[1] - \
+                                (9 * self.zoom_index) <= pair[1]:
+                            if current_y not in potential_gaps:
+                                potential_gaps[current_y] = [pair]
+                            else:
+                                potential_gaps[current_y] += [pair]
+                    current_y -= 8 * self.zoom_index
+
+                    if 1000 < emergency_break:
+                        raise "StuckInLoopError-find_area"
+
+                    emergency_break += 1
+                current_y += 8 * self.zoom_index
+                if current_y in potential_gaps and \
+                        current_y - (8 * self.zoom_index) in all_bases:
+                    for each_pair in potential_gaps[current_y]:
+                        for each_base in all_bases[current_y - (8 * self.zoom_index)]:
+                            if each_pair[0] != each_base[0] and \
+                                    each_pair[1] != each_base[-1]:
+                                pot_area += [potential_gaps]
+                else:
+                    pot_area += [potential_gaps]
+
+        return pot_area
+
+    def add_soil(self, pot_area):
+        """
+        Using the defined gaps of a pot area, fill it with soil.
+        :return:
+        """
+        # Added an extra loop to maybe define different pots areas in the future
+        self.soil_area = []
+        for each_area in pot_area:
+            gap_y = list(each_area.keys())
+            for y in gap_y:
+                for pair in each_area[y]:
+                    first_x = pair[0] + (9 * self.zoom_index)
+                    last_x = pair[1]
+                    while first_x < last_x:
+                        self.soil_area += [pygame.Rect(first_x, y,
+                                                       9 * self.zoom_index,
+                                                       8 * self.zoom_index)]
+                        first_x += (9 * self.zoom_index)
 
     def pot_soil(self):
         """
         Render a valid pot zone
         """
         if self.validate_pot():
+            get_sides = self.get_sides()
+            get_bases = self.get_bases()
             print("Valid")
-            # todo: today
+            print("sides: {all_sides}".format(all_sides=get_sides))
+            print("bases: {all_bases}".format(all_bases=get_bases))
+            print("Now the pot area: "
+                  "{pot_area}".format(pot_area=self.find_area(get_sides,
+                                                              get_bases)))
+            pot_area = self.find_area(get_sides, get_bases)
+        else:
+            pot_area = []
+        self.add_soil(pot_area)
 
     def render_soil(self, screen):
-        pass
+        if 0 < len(self.soil_area):
+            for rect in self.soil_area:
+                pygame.draw.rect(screen, LIGHT_BROWN, rect)
 
     @staticmethod
     def closest_rects(current_rect, compare_rects):
@@ -983,7 +1134,7 @@ class Program:
             for event in pygame.event.get():    # Collect all key presses
                 # Quit condition if you press the X on the top right
                 if event.type == pygame.QUIT:
-                    #self.memory.write_save()
+                    # self.memory.write_save()
                     self.running = False    # Stop running this loop
                     pygame.mixer.music.stop()   # Stop the music
                     scene.run_scene = False     # Tell scene to stop running
@@ -999,7 +1150,7 @@ class Program:
 
             # Stop the game using other conditions (running, but scene says off)
             if self.running and not scene.run_scene:
-                #self.memory.write_save()
+                # self.memory.write_save()
                 self.running = False    # Stop running this loop
                 pygame.mixer.music.stop()   # Stop the music
                 scene.close_game()      # Tell scene to shut off
@@ -1037,7 +1188,8 @@ if __name__ == "__main__":
     """pygame.display.set_caption("display_window") # game window caption
     icon = pygame.image.load(file_path + "file_image_name") # loading image
     default_icon_image_size = (32, 32) # reducing size of image
-    icon = pygame.transform.scale(icon, default_icon_image_size) # scaling image correctly
+    icon = pygame.transform.scale(icon, default_icon_image_size) 
+    # scaling image correctly
     pygame.display.set_icon(icon) # game window icon"""
 
     start_game = Program(game_width, game_height)
