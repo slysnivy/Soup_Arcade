@@ -388,15 +388,17 @@ class PotCreate(Scene):
         # Actions when player interacts with the icons, related to tool_index
         self.sidetool_actions = {
             0: self.add_pot, 1: self.remove_pot,
-            2: self.zoom_in, 3: self.zoom_out
+            2: None,
+            3: self.zoom_in, 4: self.zoom_out,
         }
 
         # Sidebar tool options
         """ Currently the options are (according to index)
         0: adding a pot piece 
         1: removing a pot piece
-        2: zooming in
-        3: zooming out
+        2: adding/checking soil
+        3: zooming in
+        4: zooming out
         """
 
         # Load icons
@@ -442,13 +444,18 @@ class PotCreate(Scene):
                     # Remove pot piece when clicking on build grid
                     self.sidetool_actions[self.tool_index]()
 
+                elif self.cursor_rect.collidelistall(self.build_area) and \
+                        self.tool_index == 2 and not \
+                        self.cursor_rect.collidelistall(self.sidetool_rects):
+                    # Soil area
+                    self.toggle_soil = True
+
                 elif self.cursor_rect.collidelistall(self.sidetool_rects) and \
-                        1 < self.tool_index:
+                        2 < self.tool_index:
                     # Other options for instant reproducable action when click
                     self.cursor_rect.collidelistall(self.sidetool_rects)
                     self.sidetool_actions[self.tool_index]()
 
-                self.toggle_soil = True
 
         if held[pygame.K_d] and \
                 25 < pygame.time.get_ticks() - self.held_delay:
@@ -686,9 +693,6 @@ class PotCreate(Scene):
         return valid_gaps
 
     def get_bases(self):
-        if len(self.pot) < 1:
-            return False
-
         rect_rows = self.get_rows()
 
         # Validate if pairs exist:
@@ -724,6 +728,24 @@ class PotCreate(Scene):
                     valid_bases[y] += [bases]
 
         return valid_bases
+
+    def specific_base(self, click_x, click_y, all_bases):
+        if len(all_bases) < 1:
+            return False
+        this_base = None
+        base_y = list(all_bases.keys())
+        closest_y = max(base_y)
+        # Check x closeness
+        for y in base_y:
+            for base in all_bases[y]:
+                if base[0] + (9 * self.zoom_index) <= click_x <= base[-1] and \
+                        y - click_y < closest_y:
+                    this_base = {y: base}
+                    closest_y = y - click_y
+
+        if this_base is not None:
+            return this_base
+        return False
 
     def validate_pot(self):
         # todo: redo get_pot() and turn into get_sides()
@@ -789,36 +811,34 @@ class PotCreate(Scene):
         :return:
         """
         valid_corners = {}
-        base_y = list(all_bases.keys())
-        for y in base_y:
-            for current_base in all_bases[y]:
-                if y - (8 * self.zoom_index) in all_sides:
-                    for pair in all_sides[y - (8 * self.zoom_index)]:
-                        if pair[0] in current_base and \
-                                pair[1] in current_base:
-                            if y - (8 * self.zoom_index) not in valid_corners:
-                                valid_corners[y - (8 * self.zoom_index)] = [pair]
-                            else:
-                                valid_corners[y - (8 * self.zoom_index)] += [pair]
+        base_y = list(all_bases.keys())[0]
+        print(all_bases)
+        current_base = all_bases[base_y]
+        if base_y - (8 * self.zoom_index) in all_sides:
+            for pair in all_sides[base_y - (8 * self.zoom_index)]:
+                if pair[0] in current_base and \
+                        pair[1] in current_base:
+                    if base_y - (8 * self.zoom_index) not in valid_corners:
+                        valid_corners[base_y - (8 * self.zoom_index)] = [pair]
+                    else:
+                        valid_corners[base_y - (8 * self.zoom_index)] += [pair]
 
         corner_y = list(valid_corners.keys())
         print(valid_corners)
         pot_area = []   # todo: make a class to store PotArea 's
         emergency_break = 0
+
         for y in corner_y:
             current_y = y
             potential_gaps = {}
             for current_pair in valid_corners[y]:
                 while current_y in all_sides:
                     for pair in all_sides[current_y]:
-                        if pair[0] <= current_pair[0] + \
-                                (9 * self.zoom_index) and \
-                                current_pair[1] - \
-                                (9 * self.zoom_index) <= pair[1]:
-                            if current_y not in potential_gaps:
-                                potential_gaps[current_y] = [pair]
-                            else:
-                                potential_gaps[current_y] += [pair]
+                        # todo: Need to redo if here and entire thing
+                        if current_y not in potential_gaps:
+                            potential_gaps[current_y] = [pair]
+                        else:
+                            potential_gaps[current_y] += [pair]
                     current_y -= 8 * self.zoom_index
 
                     if 1000 < emergency_break:
@@ -861,16 +881,19 @@ class PotCreate(Scene):
         """
         Render a valid pot zone
         """
-        if self.validate_pot():
+        if self.validate_pot() and self.specific_base(self.mouse_x,
+                                          self.mouse_y,
+                                          self.get_bases()):
             get_sides = self.get_sides()
-            get_bases = self.get_bases()
+            get_base = self.specific_base(self.mouse_x,
+                                          self.mouse_y,
+                                          self.get_bases())
+            pot_area = self.find_area(get_sides, get_base)
             print("Valid")
             print("sides: {all_sides}".format(all_sides=get_sides))
-            print("bases: {all_bases}".format(all_bases=get_bases))
+            print("bases: {all_bases}".format(all_bases=get_base))
             print("Now the pot area: "
-                  "{pot_area}".format(pot_area=self.find_area(get_sides,
-                                                              get_bases)))
-            pot_area = self.find_area(get_sides, get_bases)
+                  "{pot_area}".format(pot_area=pot_area))
         else:
             pot_area = []
         self.add_soil(pot_area)
