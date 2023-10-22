@@ -810,53 +810,74 @@ class PotCreate(Scene):
         :param all_bases:
         :return:
         """
-        valid_corners = {}
-        base_y = list(all_bases.keys())[0]
-        print(all_bases)
-        current_base = all_bases[base_y]
-        if base_y - (8 * self.zoom_index) in all_sides:
-            for pair in all_sides[base_y - (8 * self.zoom_index)]:
-                if pair[0] in current_base and \
-                        pair[1] in current_base:
-                    if base_y - (8 * self.zoom_index) not in valid_corners:
-                        valid_corners[base_y - (8 * self.zoom_index)] = [pair]
-                    else:
-                        valid_corners[base_y - (8 * self.zoom_index)] += [pair]
-
-        corner_y = list(valid_corners.keys())
-        print(valid_corners)
-        pot_area = []   # todo: make a class to store PotArea 's
-        emergency_break = 0
-
-        for y in corner_y:
-            current_y = y
-            potential_gaps = {}
-            for current_pair in valid_corners[y]:
-                while current_y in all_sides:
-                    for pair in all_sides[current_y]:
-                        # todo: Need to redo if here and entire thing
-                        if current_y not in potential_gaps:
-                            potential_gaps[current_y] = [pair]
-                        else:
-                            potential_gaps[current_y] += [pair]
-                    current_y -= 8 * self.zoom_index
-
-                    if 1000 < emergency_break:
-                        raise "StuckInLoopError-find_area"
-
-                    emergency_break += 1
-                current_y += 8 * self.zoom_index
-                if current_y in potential_gaps and \
-                        current_y - (8 * self.zoom_index) in all_bases:
-                    for each_pair in potential_gaps[current_y]:
-                        for each_base in all_bases[current_y - (8 * self.zoom_index)]:
-                            if each_pair[0] != each_base[0] and \
-                                    each_pair[1] != each_base[-1]:
-                                pot_area += [potential_gaps]
+        current_y = list(all_bases.keys())[0]
+        all_rect = self.get_rows()
+        print(all_rect)
+        left = all_bases[current_y][0]
+        right = all_bases[current_y][-1]
+        """found_end = False
+        valid_gaps = {}
+        while not found_end:
+            if current_y - (8 * self.zoom_index) in all_sides:
+                current_side = all_sides[current_y - (8 * self.zoom_index)]
+                if self.fa_helper_mid([left, right], current_side):
+                    # Middle case, left and right don't change, change y only
+                    current_y -= (8 * self.zoom_index)
+                    valid_gaps[current_y] = all_sides[current_y]
+                elif self.fa_helper_left(left, current_side, )
+                    # need to do this part
                 else:
-                    pot_area += [potential_gaps]
+                    found_end = True
+            else:
+                found_end = True"""
+        return [self.fa_long(left, current_y - (8 * self.zoom_index), all_rect, [])] + \
+               [self.fa_long(right, current_y - (8 * self.zoom_index), all_rect, [])]
 
-        return pot_area
+    def fa_long(self, current_x, current_y, search_dict, mem_list):
+        if current_y - (8 * self.zoom_index) in search_dict and \
+                current_x - (9 * self.zoom_index) in search_dict[current_y] and \
+                [current_x - (9 * self.zoom_index), current_y] not in mem_list:
+            mem_list += [[current_x, current_y]]
+            up = self.fa_long(current_x,
+                                current_y - (8 * self.zoom_index),
+                                search_dict, mem_list)
+            left = self.fa_long(current_x - (9 * self.zoom_index),
+                                current_y,
+                                search_dict, mem_list)
+            return [[current_x, current_y]] + up + left
+        elif current_y - (8 * self.zoom_index) in search_dict and \
+                current_x + (9 * self.zoom_index) in search_dict[current_y] and \
+                [current_x + (9 * self.zoom_index), current_y] not in mem_list:
+            mem_list += [[current_x, current_y]]
+            up = self.fa_long(current_x,
+                                current_y - (8 * self.zoom_index),
+                                search_dict, mem_list)
+            right = self.fa_long(current_x + (9 * self.zoom_index),
+                                current_y,
+                                search_dict, mem_list)
+            return [[current_x, current_y]] + up + right
+        elif current_y - (8 * self.zoom_index) in search_dict:
+            mem_list += [[current_x, current_y]]
+            return [[current_x, current_y]] + \
+                   self.fa_long(current_x,
+                                 current_y - (8 * self.zoom_index),
+                                 search_dict, mem_list)
+        elif current_x - (9 * self.zoom_index) in search_dict[current_y] and \
+                [current_x - (9 * self.zoom_index), current_y] not in mem_list:
+            mem_list += [[current_x, current_y]]
+            return [[current_x, current_y]] + \
+                   self.fa_long(current_x - (9 * self.zoom_index),
+                                 current_y,
+                                 search_dict, mem_list)
+        elif current_x + (9 * self.zoom_index) in search_dict[current_y] and \
+                [current_x + (9 * self.zoom_index), current_y] not in mem_list:
+            mem_list += [[current_x, current_y]]
+            return [[current_x, current_y]] + \
+                   self.fa_long(current_x + (9 * self.zoom_index),
+                                 current_y,
+                                 search_dict, mem_list)
+        else:
+            return []
 
     def add_soil(self, pot_area):
         """
@@ -896,7 +917,7 @@ class PotCreate(Scene):
                   "{pot_area}".format(pot_area=pot_area))
         else:
             pot_area = []
-        self.add_soil(pot_area)
+        #self.add_soil(pot_area)
 
     def render_soil(self, screen):
         if 0 < len(self.soil_area):
