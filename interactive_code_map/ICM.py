@@ -4,7 +4,6 @@ import os
 import math
 import numpy as np
 
-
 DARK_RED = (139, 0, 0)
 YELLOW = (235, 195, 65)
 BLACK = (0, 0, 0)
@@ -174,9 +173,6 @@ class Map(Scene):
         Scene.__init__(self)
         self.datapoints = []
         self.mouse = pygame.Rect(0, 0, 1, 1)
-        self.edit_options = [pygame.Rect(1, 1, 1, 1),  # Icon color
-                             pygame.Rect(2, 2, 1, 1),  # Icon location
-                             pygame.Rect(3, 3, 1, 1)]  # Icon radius
         self.select_point = None
         self.show_select = False
         self.sort_mode = 0
@@ -186,6 +182,24 @@ class Map(Scene):
 
         self.follow_mouse = False
 
+        self.edit_options = [pygame.Rect(1, 1, 1, 1),  # Icon color
+                             pygame.Rect(2, 2, 1, 1),  # Icon location
+                             pygame.Rect(3, 3, 1, 1)]  # Icon radius
+        self.edit_modes = [self.mode_0,
+                           self.mode_1,
+                           self.mode_2,
+                           self.mode_3
+                           ]
+        self.current_mode = 0
+        """
+        Reflects the corresponding edit options in human indices
+        1: icon color
+        2: icon location
+        3: icon radius
+        
+        We reserve 0 for no options
+        """
+
     def input(self, pressed, held):
         for action in pressed:
             if action == pygame.MOUSEMOTION:
@@ -193,52 +207,95 @@ class Map(Scene):
                 self.mouse.y = pygame.mouse.get_pos()[1]
 
             if action == pygame.MOUSEBUTTONDOWN:
-                point_index = 0
-                mouse_point = DataPoint()
-                mouse_point.change_icon_location(self.mouse.x,
-                                                 self.mouse.y)
-                check_select = True
-
-                while 0 < len(self.datapoints) and \
-                        (point_index < len(self.datapoints)):
-                    if self.select_point is self.datapoints[point_index] and \
-                            self.calculate_mouse(self.datapoints[
-                                                        point_index]):
-                        self.follow_mouse = True
-                        check_select = False
-                    elif self.calculate_mouse(self.datapoints[point_index]) and \
-                            self.select_point is None:
-                        self.select_point = self.datapoints[point_index]
-                        self.select_point.icon.display_options = True
-                        check_select = False
-
-                    point_index += 1
-
-                if -1 < self.mouse.collidelist(self.edit_options) and \
-                        self.select_point is not None and \
-                        self.select_point.icon.display_options:
-                    print(self.mouse.collidelist(self.edit_options))
-
-                elif check_select:
-                        # Make a new point
-                        self.select_point = None
-                        new_point = DataPoint()
-                        new_point.change_icon_location(self.mouse.x,
-                                                       self.mouse.y)
-                        self.datapoints += [new_point]
-
-                elif self.select_point is not None:
-                    self.update_option_pos()
+                self.edit_modes[self.current_mode]()
 
             if action == pygame.MOUSEBUTTONUP and self.follow_mouse:
-                print("yeet")
                 self.follow_mouse = False
 
             if action == pygame.K_ESCAPE:
                 self.run_scene = False
 
+    def mode_0(self):
+        # Move and add points
+        point_index = 0
+        mouse_point = DataPoint()
+        mouse_point.change_icon_location(self.mouse.x,
+                                         self.mouse.y)
+        check_select = True
+
+        while 0 < len(self.datapoints) and \
+                (point_index < len(self.datapoints)):
+            if self.select_point is self.datapoints[point_index] and \
+                    self.calculate_mouse(self.datapoints[
+                                             point_index]):
+                self.follow_mouse = True
+                check_select = False
+            elif self.calculate_mouse(
+                    self.datapoints[point_index]):
+                self.select_point = self.datapoints[point_index]
+                self.select_point.icon.display_options = True
+                check_select = False
+
+            point_index += 1
+
+        if -1 < self.mouse.collidelist(self.edit_options) and \
+                self.select_point is not None and \
+                self.select_point.icon.display_options:
+            # Edit options when clicked
+            self.current_mode = self.mouse.collidelist(
+                self.edit_options) + 1
+
+        elif check_select:
+            check_dist = True
+            for point in self.datapoints:
+                if self.calculate_mouse(point):
+                    check_dist = False
+
+            if check_dist:
+                # Make a new point, only if it's far away from other points
+                self.select_point = None
+                new_point = DataPoint()
+                new_point.change_icon_location(self.mouse.x,
+                                               self.mouse.y)
+                self.datapoints += [new_point]
+
+        elif self.select_point is not None:
+            self.update_option_pos()
+
+    def mode_1(self):
+        # On left click, find a valid point to click on that's not our point
+
+        # Adding a line, must be more than 1 point
+        if 1 < len(self.datapoints):
+            find_point = False
+            point_index = 0
+            while not find_point and point_index < len(self.datapoints):
+                if find_point is not self.select_point:
+                    find_point = self.calculate_mouse(
+                        self.datapoints[point_index])
+                point_index += 1
+
+            if find_point:
+                self.select_point.add_point(find_point)
+            else:
+                self.select_point = None
+                self.show_select = False
+                self.current_mode = 0
+        else:
+            # No other points available, return to default mode
+            self.current_mode = 0
+            self.select_point = None
+            self.show_select = False
+
+    def mode_2(self):
+        pass
+
+    def mode_3(self):
+        pass
+
     def update(self):
-        if self.select_point is not None and not self.select_point.icon.display_options:
+        if self.select_point is not None and \
+                not self.select_point.icon.display_options:
             self.select_point = None
 
         if self.follow_mouse and self.select_point is not None:
@@ -261,7 +318,7 @@ class Map(Scene):
         """Point a is self.mouse
         Point b is any datapoint
         """
-        hitbox_mod = 3  # Radius size, change for more/less cluttering
+        hitbox_mod = 5  # Radius size, change for more/less cluttering
 
         if math.sqrt((self.mouse.x - point_b.icon.center[0]) ** 2 + \
                      (self.mouse.y - point_b.icon.center[
@@ -295,7 +352,7 @@ class Map(Scene):
         """Point a is self.mouse
         Point b is any datapoint
         """
-        hitbox_mod = 1      # Radius size, change for more/less cluttering
+        hitbox_mod = 5  # Radius size, change for more/less cluttering
 
         if math.sqrt((point_a.icon.center[0] - point_b.icon.center[0]) ** 2 +
                      (point_a.icon.center[1] -
@@ -324,6 +381,8 @@ class DataPoint:
         self.title = Text("", [0, 0], 24, "impact", BLACK, None)
         self.description = [""]
         self.icon = Circle(DARK_GREEN, [0, 0], 3)
+        self.associated = []  # Other points related/connecting to this one
+        self.line_color = []  # Line colors for connecting related points
 
     def change_title(self, in_text):
         self.title.text = in_text
@@ -344,9 +403,21 @@ class DataPoint:
     def change_icon_radius(self, new_radius):
         self.icon.radius = new_radius
 
+    def add_point(self, in_point):
+        # Add associated points to connect to this one
+        self.associated += [in_point]
+        self.line_color += [RED]
+
+    def remove_point(self, in_point):
+        del self.associated[self.associated.index(in_point)]
+
     def render(self, screen):
         self.icon.render(screen)
-        pass
+        if 0 < len(self.associated):
+            for li in range(len(self.associated)):
+                pygame.draw.line(screen, self.line_color[li],
+                                 self.icon.center,
+                                 self.associated[li].icon.center)
 
 
 class Circle:
