@@ -246,18 +246,22 @@ class Map(Scene):
                 self.edit_options) + 1
 
         elif check_select:
+            # When not clicking on a point
             check_dist = True
             for point in self.datapoints:
                 if self.calculate_mouse(point):
                     check_dist = False
 
-            if check_dist:
+            if check_dist and self.select_point is None:
                 # Make a new point, only if it's far away from other points
-                self.select_point = None
+                # Only make a new point once we deselected our point
                 new_point = DataPoint()
                 new_point.change_icon_location(self.mouse.x,
                                                self.mouse.y)
                 self.datapoints += [new_point]
+            else:
+                # Deselect our point
+                self.select_point = None
 
         elif self.select_point is not None:
             self.update_option_pos()
@@ -265,7 +269,7 @@ class Map(Scene):
     def mode_1(self):
         # On left click, find a valid point to click on that's not our point
 
-        # Adding a line, must be more than 1 point
+        # Adding or removing a line on left click
         if 1 < len(self.datapoints):
             find_point = False
             point_index = 0
@@ -275,7 +279,13 @@ class Map(Scene):
                         self.datapoints[point_index])
                 point_index += 1
 
-            if find_point:
+            if find_point and 0 < len(self.select_point.associated) and \
+                    find_point in self.select_point.associated:
+                self.select_point.remove_point(find_point)
+            elif find_point and 0 < len(find_point.associated) and \
+                    self.select_point in find_point.associated:
+                find_point.remove_point(self.select_point)
+            elif find_point:
                 self.select_point.add_point(find_point)
             else:
                 self.select_point = None
@@ -307,6 +317,10 @@ class Map(Scene):
         screen.fill(WHITE)
 
         for each_point in self.datapoints:
+            if self.current_mode == 1 and each_point is not self.select_point:
+                each_point.change_icon_border(0)
+            else:
+                each_point.change_icon_border(100)
             each_point.render(screen)
 
         if self.select_point is not None and \
@@ -322,26 +336,26 @@ class Map(Scene):
 
         if math.sqrt((self.mouse.x - point_b.icon.center[0]) ** 2 + \
                      (self.mouse.y - point_b.icon.center[
-                         1]) ** 2) <= point_b.icon.radius * hitbox_mod:
+                         1]) ** 2) <= point_b.icon.width * hitbox_mod:
             # Top left corner
             return point_b
         elif math.sqrt((self.mouse.x + self.mouse.width -
                         point_b.icon.center[0]) ** 2 + \
                        (self.mouse.y - point_b.icon.center[
-                           1]) ** 2) <= point_b.icon.radius * hitbox_mod:
+                           1]) ** 2) <= point_b.icon.width * hitbox_mod:
             # Top right corner
             return point_b
         elif math.sqrt((self.mouse.x - point_b.icon.center[0]) ** 2 + \
                        (self.mouse.y + self.mouse.height -
                         point_b.icon.center[
-                            1]) ** 2) <= point_b.icon.radius * hitbox_mod:
+                            1]) ** 2) <= point_b.icon.width * hitbox_mod:
             # Bottom left corner
             return point_b
         elif math.sqrt((self.mouse.x + self.mouse.width -
                         point_b.icon.center[0]) ** 2 + \
                        (self.mouse.y + self.mouse.height -
                         point_b.icon.center[
-                            1]) ** 2) <= point_b.icon.radius * hitbox_mod:
+                            1]) ** 2) <= point_b.icon.width * hitbox_mod:
             # Bottom right corner
             return point_b
         else:
@@ -357,7 +371,7 @@ class Map(Scene):
         if math.sqrt((point_a.icon.center[0] - point_b.icon.center[0]) ** 2 +
                      (point_a.icon.center[1] -
                       point_b.icon.center[1]) ** 2) <= \
-                point_b.icon.radius * hitbox_mod:
+                point_b.icon.width * hitbox_mod:
             return point_b
         else:
             # No points detected
@@ -380,7 +394,7 @@ class DataPoint:
     def __init__(self):
         self.title = Text("", [0, 0], 24, "impact", BLACK, None)
         self.description = [""]
-        self.icon = Circle(DARK_GREEN, [0, 0], 3)
+        self.icon = Icon(LIME_GREEN, [0, 0], 5, 5)
         self.associated = []  # Other points related/connecting to this one
         self.line_color = []  # Line colors for connecting related points
 
@@ -398,10 +412,18 @@ class DataPoint:
         self.icon.color = new_color
 
     def change_icon_location(self, x, y):
-        self.icon.center = [x, y]
+        self.icon.rect.x = x
+        self.icon.rect.y = y
+        self.icon.shadow_rect.x = x + self.icon.width // 3
+        self.icon.shadow_rect.y = y + self.icon.height // 3
+        self.icon.center = self.icon.rect.center
 
     def change_icon_radius(self, new_radius):
         self.icon.radius = new_radius
+
+    def change_icon_border(self, new_border):
+        # Also known as "change_icon_edges"
+        self.icon.border = new_border
 
     def add_point(self, in_point):
         # Add associated points to connect to this one
@@ -409,7 +431,12 @@ class DataPoint:
         self.line_color += [RED]
 
     def remove_point(self, in_point):
-        del self.associated[self.associated.index(in_point)]
+        point_index = self.associated.index(in_point)
+        del self.associated[point_index]
+        del self.line_color[point_index]
+
+    def update(self):
+        pass
 
     def render(self, screen):
         self.icon.render(screen)
@@ -418,6 +445,30 @@ class DataPoint:
                 pygame.draw.line(screen, self.line_color[li],
                                  self.icon.center,
                                  self.associated[li].icon.center)
+
+
+class Icon:
+    def __init__(self, in_color, location, width, height):
+        self.color = in_color
+        self.rect = pygame.Rect(location[0], location[1],
+                                width, height)
+        self.center = self.rect.center
+        self.height = height
+        self.width = width
+        self.border = 0
+        # We add a third of the width/height to proportionally scale shadows
+        self.shadow_rect = pygame.Rect(location[0] + width // 3,
+                                       location[1] + height // 3,
+                                       width, height)
+
+    def render(self, screen):
+        # Icon shadow
+        pygame.draw.rect(screen, DARK_GREY, self.shadow_rect,
+                         border_radius=self.border)
+
+        # Actual icon/button
+        pygame.draw.rect(screen, self.color, self.rect,
+                         border_radius=self.border)
 
 
 class Circle:
@@ -430,6 +481,21 @@ class Circle:
 
     def render(self, screen):
         pygame.draw.circle(screen, self.color, self.center, self.radius)
+
+
+class Rect:
+    def __init__(self, in_color, location, width, height):
+        self.color = in_color
+        self.center = (location[0] - (width / 2),
+                       location[1] - (height / 2))
+        self.height = height
+        self.width = width
+
+    def render(self, screen):
+        pygame.draw.rect(screen, self.color, [self.center[0],
+                                              self.center[1],
+                                              self.height,
+                                              self.width])
 
 
 class Program:
