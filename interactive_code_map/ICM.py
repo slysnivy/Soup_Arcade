@@ -169,8 +169,11 @@ class Scene:
 
 
 class Map(Scene):
-    def __init__(self):
+    def __init__(self, memory):
         Scene.__init__(self)
+
+        self.memory = memory
+
         self.datapoints = []
         self.mouse = pygame.Rect(0, 0, 1, 1)
         self.select_point = None
@@ -199,6 +202,26 @@ class Map(Scene):
         
         We reserve 0 for no options
         """
+
+        self.color_options = [DARK_RED, DARK_GREEN, DARK_GREY,
+                              RED, LIME_GREEN, GREY,
+                              BLUE, YELLOW, ORANGE,
+                              CYAN, PURPLE]
+        self.rect_colors = []
+        x, y = 0, 0
+        width, height = 20, 20
+        color_per_row = 3
+        color_iter = 0
+        for color in self.color_options:
+            self.rect_colors += [Rect(color, [x + (width * color_iter),
+                                              y],
+                                      width, height)]
+
+            if color_per_row - 2 < color_iter:
+                y += height
+                color_iter = 0
+            else:
+                color_iter += 1
 
     def input(self, pressed, held):
         for action in pressed:
@@ -298,7 +321,13 @@ class Map(Scene):
             self.show_select = False
 
     def mode_2(self):
-        pass
+        check = self.mouse.collidelist(self.rect_colors)
+        if -1 < check:
+            self.select_point.change_icon_color(self.color_options[check])
+        else:
+            self.current_mode = 0
+            self.select_point = None
+            self.show_select = False
 
     def mode_3(self):
         pass
@@ -316,17 +345,30 @@ class Map(Scene):
     def render(self, screen):
         screen.fill(WHITE)
 
+        # Render lines under points
+        for each_point in self.datapoints:
+            each_point.render_lines(screen)
+
+        # Render points
         for each_point in self.datapoints:
             if self.current_mode == 1 and each_point is not self.select_point:
+                # Turn points to rects to show that it's clickable
                 each_point.change_icon_border(0)
             else:
+                # Circle default rendering
                 each_point.change_icon_border(100)
             each_point.render(screen)
 
+        # Render options
         if self.select_point is not None and \
                 self.select_point.icon.display_options:
             for each_option in self.edit_options:
                 pygame.draw.rect(screen, ORANGE, each_option, 1)
+
+        # Render color options
+        if self.current_mode == 2:
+            for color in self.rect_colors:
+                color.render(screen)
 
     def calculate_mouse(self, point_b):
         """Point a is self.mouse
@@ -363,8 +405,8 @@ class Map(Scene):
             return None
 
     def calculate_distance(self, point_a, point_b):
-        """Point a is self.mouse
-        Point b is any datapoint
+        """Get distance between point_a and point_b and return point_b
+        if point_a is touching
         """
         hitbox_mod = 5  # Radius size, change for more/less cluttering
 
@@ -440,11 +482,21 @@ class DataPoint:
 
     def render(self, screen):
         self.icon.render(screen)
+
+    def render_lines(self, screen):
         if 0 < len(self.associated):
             for li in range(len(self.associated)):
+                # Line Shadow
+                pygame.draw.line(screen, DARK_GREY,
+                                 (self.icon.center[0] + 1,
+                                  self.icon.center[1] + 1),
+                                 (self.associated[li].icon.center[0] + 1,
+                                  self.associated[li].icon.center[1] + 1), 2)
+
+                # Actual Line
                 pygame.draw.line(screen, self.line_color[li],
                                  self.icon.center,
-                                 self.associated[li].icon.center)
+                                 self.associated[li].icon.center, 2)
 
 
 class Icon:
@@ -490,12 +542,11 @@ class Rect:
                        location[1] - (height / 2))
         self.height = height
         self.width = width
+        self.rect = pygame.Rect(location[0], location[1],
+                                width, height)
 
     def render(self, screen):
-        pygame.draw.rect(screen, self.color, [self.center[0],
-                                              self.center[1],
-                                              self.height,
-                                              self.width])
+        pygame.draw.rect(screen, self.color, self.rect)
 
 
 class Program:
@@ -606,7 +657,7 @@ if __name__ == "__main__":
 
     start_game = Program(game_width, game_height)
     # Initialize running the game with Program
-    start_scene = Map()
+    start_scene = Map(start_game.memory)
     # Initialize the first scene/starting scene shown to the player
     start_game.run(game_width, game_height, start_scene)  # Run the game loop
     """The game loop will be stuck at this line (start_game.run) until the
