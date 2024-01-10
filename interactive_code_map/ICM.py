@@ -1,8 +1,7 @@
 import pygame
-import random
+import pickle
 import os
 import math
-import numpy as np
 
 DARK_RED = (139, 0, 0)
 YELLOW = (235, 195, 65)
@@ -31,6 +30,9 @@ class Memory:
         self.res_width = width
         self.res_height = height
         self.music = None
+        self.dp = []
+        self.memory_manager = MemoryPoint()
+        self.dp = self.memory_manager.depickle_dp("save")
 
     def load_game(self):
         """ Load previous game instance, usually from a text_file"""
@@ -39,6 +41,73 @@ class Memory:
     def load_scenes(self):
         """ Load all scenes from a text file"""
         pass
+
+
+class MemoryPoint:
+    """
+    Class used to manage and hold all storage actions
+    """
+    def __init__(self):
+        # Datapoints:
+        self.dp_titles = []
+        self.dp_desc = []
+        self.dp_icons = {}
+        self.dp_lines = {}
+        self.dp_line_colors = {}
+
+    def comp_dp(self, dp_list):
+        for dp in dp_list:
+            self.dp_titles += [[str(dp.title.text)]]
+            self.dp_desc += [[dp.description]]
+            self.dp_icons[dp.id] = [dp.icon.color, dp.icon.rect.x,
+                              dp.icon.rect.y, dp.icon.width,
+                              dp.icon.height]
+            self.dp_lines[dp.id] = [[other_dp.id]
+                                 for other_dp in dp.associated]
+            self.dp_line_colors[dp.id] = dp.line_color
+
+    def pickle_dp(self, pickle_path):
+        with open(pickle_path + "/my_map", "wb") as out_file:
+            pickle.dump(self.dp_titles, out_file)
+            pickle.dump(self.dp_desc, out_file)
+            pickle.dump(self.dp_icons, out_file)
+            pickle.dump(self.dp_lines, out_file)
+            pickle.dump(self.dp_line_colors, out_file)
+
+        out_file.close()
+
+    def depickle_dp(self, pickle_path):
+        dp_list = []
+        dp_dict = {}
+        if len(os.listdir("save")) < 1:
+            return dp_list
+
+        with open(pickle_path + "/my_map", "rb") as in_file:
+            self.dp_titles = pickle.load(in_file)
+            self.dp_desc = pickle.load(in_file)
+            self.dp_icons = pickle.load(in_file)
+            self.dp_lines = pickle.load(in_file)
+            self.dp_line_colors = pickle.load(in_file)
+
+        all_id = list(self.dp_icons.keys())
+        # Create datapoint list
+        for dp_id in all_id:
+            new_point = DataPoint()
+            # todo: add more stuff to dp and method call here respectively
+            new_point.change_icon_location(self.dp_icons[dp_id][1],
+                                           (self.dp_icons[dp_id][2]))
+            new_point.change_icon_color(self.dp_icons[dp_id][0])
+            dp_list += [new_point]
+            dp_dict[dp_id] = new_point
+
+        # Make lines by establishing connections in our current datapoints
+        for dp_id in all_id:
+            if 0 < len(self.dp_lines[dp_id]):
+                for line in self.dp_lines[dp_id]:
+                    dp_dict[dp_id].associated += [dp_dict[line[0]]]
+                dp_dict[dp_id].line_color = self.dp_line_colors[dp_id]
+
+        return dp_list
 
 
 class Text:
@@ -174,7 +243,7 @@ class Map(Scene):
 
         self.memory = memory
 
-        self.datapoints = []
+        self.datapoints = self.memory.dp
         self.mouse = pygame.Rect(0, 0, 1, 1)
         self.select_point = None
         self.show_select = False
@@ -223,6 +292,8 @@ class Map(Scene):
             else:
                 color_iter += 1
 
+        self.id_count = 0
+
     def input(self, pressed, held):
         for action in pressed:
             if action == pygame.MOUSEMOTION:
@@ -236,6 +307,7 @@ class Map(Scene):
                 self.follow_mouse = False
 
             if action == pygame.K_ESCAPE:
+                self.save_map()
                 self.run_scene = False
 
     def mode_0(self):
@@ -274,14 +346,20 @@ class Map(Scene):
             for point in self.datapoints:
                 if self.calculate_mouse(point):
                     check_dist = False
-
             if check_dist and self.select_point is None:
                 # Make a new point, only if it's far away from other points
                 # Only make a new point once we deselected our point
                 new_point = DataPoint()
                 new_point.change_icon_location(self.mouse.x,
                                                self.mouse.y)
+                new_point.change_id(self.id_count)
+                self.id_count += 1
                 self.datapoints += [new_point]
+            elif -1 < self.mouse.collidelist(self.rect_colors) and \
+                    self.select_point is not None:
+                self.select_point.change_icon_color(
+                    self.color_options[self.mouse.collidelist(
+                        self.rect_colors)])
             else:
                 # Deselect our point
                 self.select_point = None
@@ -321,13 +399,7 @@ class Map(Scene):
             self.show_select = False
 
     def mode_2(self):
-        check = self.mouse.collidelist(self.rect_colors)
-        if -1 < check:
-            self.select_point.change_icon_color(self.color_options[check])
-        else:
-            self.current_mode = 0
-            self.select_point = None
-            self.show_select = False
+        pass
 
     def mode_3(self):
         pass
@@ -344,7 +416,9 @@ class Map(Scene):
 
     def render(self, screen):
         screen.fill(WHITE)
+        self.render_mode_0(screen)
 
+    def render_mode_0(self, screen):
         # Render lines under points
         for each_point in self.datapoints:
             each_point.render_lines(screen)
@@ -360,15 +434,18 @@ class Map(Scene):
             each_point.render(screen)
 
         # Render options
-        if self.select_point is not None and \
+        if self.select_point and \
                 self.select_point.icon.display_options:
             for each_option in self.edit_options:
                 pygame.draw.rect(screen, ORANGE, each_option, 1)
 
         # Render color options
-        if self.current_mode == 2:
+        if self.select_point:
             for color in self.rect_colors:
                 color.render(screen)
+
+    def render_mode_1(self):
+        pass
 
     def calculate_mouse(self, point_b):
         """Point a is self.mouse
@@ -431,6 +508,22 @@ class Map(Scene):
             self.edit_options[option_ind].width = size
             self.edit_options[option_ind].height = size
 
+    def save_map(self):
+        out_path = os.getcwd()
+        if "save" not in os.listdir(out_path):
+            # Debug here for no save folder
+            return None
+
+        if len(os.listdir(out_path + "/save")) < 1:
+            # Debug here for no map in folder, or just a warning
+            pass
+
+        # todo: Update the map to have a map selector in the future
+
+        new_save = MemoryPoint()
+        new_save.comp_dp(self.datapoints)
+        new_save.pickle_dp(out_path + "/save")
+
 
 class DataPoint:
     def __init__(self):
@@ -439,6 +532,7 @@ class DataPoint:
         self.icon = Icon(LIME_GREEN, [0, 0], 5, 5)
         self.associated = []  # Other points related/connecting to this one
         self.line_color = []  # Line colors for connecting related points
+        self.id = 0
 
     def change_title(self, in_text):
         self.title.text = in_text
@@ -466,6 +560,9 @@ class DataPoint:
     def change_icon_border(self, new_border):
         # Also known as "change_icon_edges"
         self.icon.border = new_border
+
+    def change_id(self, new_id):
+        self.id = new_id
 
     def add_point(self, in_point):
         # Add associated points to connect to this one
