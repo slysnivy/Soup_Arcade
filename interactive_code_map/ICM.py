@@ -97,9 +97,9 @@ class MemoryPoint:
             new_point.change_icon_location(self.dp_icons[dp_id][1],
                                            (self.dp_icons[dp_id][2]))
             new_point.change_icon_color(self.dp_icons[dp_id][0])
+            new_point.change_id(dp_id)
             dp_list += [new_point]
             dp_dict[dp_id] = new_point
-
         # Make lines by establishing connections in our current datapoints
         for dp_id in all_id:
             if 0 < len(self.dp_lines[dp_id]):
@@ -254,9 +254,9 @@ class Map(Scene):
 
         self.follow_mouse = False
 
-        self.edit_options = [pygame.Rect(1, 1, 1, 1),  # Icon color
-                             pygame.Rect(2, 2, 1, 1),  # Icon location
-                             pygame.Rect(3, 3, 1, 1)]  # Icon radius
+        self.edit_options = [pygame.Rect(1, 1, 1, 1),  # Make connections
+                             pygame.Rect(2, 2, 1, 1),  # None
+                             pygame.Rect(3, 3, 1, 1)]  # None
         self.edit_modes = [self.mode_0,
                            self.mode_1,
                            self.mode_2,
@@ -271,6 +271,9 @@ class Map(Scene):
         
         We reserve 0 for no options
         """
+        self.render_modes = [self.render_mode_0,
+                             self.render_mode_1]
+        self.current_render = 0
 
         self.color_options = [DARK_RED, DARK_GREEN, DARK_GREY,
                               RED, LIME_GREEN, GREY,
@@ -292,7 +295,16 @@ class Map(Scene):
             else:
                 color_iter += 1
 
-        self.id_count = 0
+        if 0 < len(self.memory.memory_manager.dp_icons):
+            self.id_count = max(list(
+                self.memory.memory_manager.dp_icons.keys())) + 1
+        else:
+            self.id_count = 0
+
+        self.written_text = ""
+        self.confirm_rect = pygame.Rect(self.memory.res_width - 30,
+                                        self.memory.res_height - 30,
+                                        30, 30)
 
     def input(self, pressed, held):
         for action in pressed:
@@ -301,14 +313,32 @@ class Map(Scene):
                 self.mouse.y = pygame.mouse.get_pos()[1]
 
             if action == pygame.MOUSEBUTTONDOWN:
+                # Different modes when left clicked
                 self.edit_modes[self.current_mode]()
 
             if action == pygame.MOUSEBUTTONUP and self.follow_mouse:
                 self.follow_mouse = False
 
             if action == pygame.K_ESCAPE:
-                self.save_map()
                 self.run_scene = False
+
+            if self.current_mode == 2:
+                # Typing mode
+                """
+                If statement for character finds, in this order:
+                    - Lowercase
+                    - Uppercase
+                    - Numbers
+                    - Then every other crucial key like !, ?, (, ), ,, etc.
+                """
+                if 97 <= action <= 122 or \
+                        65 <= action <= 90 or \
+                        48 <= action <= 57 or \
+                        action in [33, 44, 46, 47, 58, 63]:
+                    self.written_text += chr(action)
+                elif action == pygame.K_BACKSPACE and \
+                        0 < len(self.written_text):
+                    self.written_text = self.written_text[:-1]
 
     def mode_0(self):
         # Move and add points
@@ -321,8 +351,8 @@ class Map(Scene):
         while 0 < len(self.datapoints) and \
                 (point_index < len(self.datapoints)):
             if self.select_point is self.datapoints[point_index] and \
-                    self.calculate_mouse(self.datapoints[
-                                             point_index]):
+                    self.calculate_mouse(self.datapoints[point_index]) and \
+                    self.mouse.collidelist(self.edit_options) < 0:
                 self.follow_mouse = True
                 check_select = False
             elif self.calculate_mouse(
@@ -339,6 +369,8 @@ class Map(Scene):
             # Edit options when clicked
             self.current_mode = self.mouse.collidelist(
                 self.edit_options) + 1
+            if self.current_mode == 2:
+                self.current_render = 1
 
         elif check_select:
             # When not clicking on a point
@@ -399,7 +431,13 @@ class Map(Scene):
             self.show_select = False
 
     def mode_2(self):
-        pass
+        # On left click, start typing
+        # todo: Add a left click to select where text goes
+
+        # Left click special rect to leave typing interface
+        if self.mouse.colliderect(self.confirm_rect):
+            self.current_mode = 0
+            self.current_render = 0
 
     def mode_3(self):
         pass
@@ -416,7 +454,7 @@ class Map(Scene):
 
     def render(self, screen):
         screen.fill(WHITE)
-        self.render_mode_0(screen)
+        self.render_modes[self.current_render](screen)  # type: ignore
 
     def render_mode_0(self, screen):
         # Render lines under points
@@ -444,14 +482,14 @@ class Map(Scene):
             for color in self.rect_colors:
                 color.render(screen)
 
-    def render_mode_1(self):
-        pass
+    def render_mode_1(self, screen):
+        pygame.draw.rect(screen, LIME_GREEN, self.confirm_rect)
 
     def calculate_mouse(self, point_b):
         """Point a is self.mouse
         Point b is any datapoint
         """
-        hitbox_mod = 5  # Radius size, change for more/less cluttering
+        hitbox_mod = 3  # Radius size, change for more/less cluttering
 
         if math.sqrt((self.mouse.x - point_b.icon.center[0]) ** 2 + \
                      (self.mouse.y - point_b.icon.center[
@@ -485,7 +523,7 @@ class Map(Scene):
         """Get distance between point_a and point_b and return point_b
         if point_a is touching
         """
-        hitbox_mod = 5  # Radius size, change for more/less cluttering
+        hitbox_mod = 3  # Radius size, change for more/less cluttering
 
         if math.sqrt((point_a.icon.center[0] - point_b.icon.center[0]) ** 2 +
                      (point_a.icon.center[1] -
@@ -693,7 +731,7 @@ class Program:
             for event in pygame.event.get():  # Collect all key presses
                 # Quit condition if you press the X on the top right
                 if event.type == pygame.QUIT:
-                    # self.memory - write to your save here
+                    scene.save_map()
                     self.running = False  # Stop running this loop
                     pygame.mixer.music.stop()  # Stop the music
                     scene.run_scene = False  # Tell scene to stop running
@@ -710,7 +748,7 @@ class Program:
 
             # Stop the game using other conditions (running, but scene says off)
             if self.running and not scene.run_scene:
-                # self.memory - write to your save here
+                scene.save_map()
                 self.running = False  # Stop running this loop
                 pygame.mixer.music.stop()  # Stop the music
                 scene.close_game()  # Tell scene to shut off
