@@ -301,10 +301,11 @@ class Map(Scene):
         else:
             self.id_count = 0
 
-        self.written_text = ""
         self.confirm_rect = pygame.Rect(self.memory.res_width - 30,
                                         self.memory.res_height - 30,
                                         30, 30)
+        self.sel_page = 0
+        self.text = ""
 
     def input(self, pressed, held):
         for action in pressed:
@@ -335,10 +336,11 @@ class Map(Scene):
                         65 <= action <= 90 or \
                         48 <= action <= 57 or \
                         action in [33, 44, 46, 47, 58, 63]:
-                    self.written_text += chr(action)
-                elif action == pygame.K_BACKSPACE and \
-                        0 < len(self.written_text):
-                    self.written_text = self.written_text[:-1]
+                    self.select_point.description.write_page(self.sel_page,
+                                                             action)
+
+                elif action == pygame.K_BACKSPACE:
+                    self.select_point.description.erase_write(self.sel_page)
 
     def mode_0(self):
         # Move and add points
@@ -484,6 +486,7 @@ class Map(Scene):
 
     def render_mode_1(self, screen):
         pygame.draw.rect(screen, LIME_GREEN, self.confirm_rect)
+        self.select_point.description.render_page(screen, self.sel_page)
 
     def calculate_mouse(self, point_b):
         """Point a is self.mouse
@@ -566,7 +569,7 @@ class Map(Scene):
 class DataPoint:
     def __init__(self):
         self.title = Text("", [0, 0], 24, "impact", BLACK, None)
-        self.description = [""]
+        self.description = Description()
         self.icon = Icon(LIME_GREEN, [0, 0], 5, 5)
         self.associated = []  # Other points related/connecting to this one
         self.line_color = []  # Line colors for connecting related points
@@ -632,6 +635,53 @@ class DataPoint:
                 pygame.draw.line(screen, self.line_color[li],
                                  self.icon.center,
                                  self.associated[li].icon.center, 2)
+
+
+class Description:
+    def __init__(self):
+        self.pages = [""]
+        self.char_per_line = 40
+        self.font_size = 40
+
+    def add_page(self):
+        self.pages += [""]
+
+    def write_page(self, page_num, letter_num):
+        if 0 <= page_num < len(self.pages) and \
+                len(self.pages[page_num]) < (12 * self.char_per_line):
+            self.pages[page_num] += chr(letter_num)
+
+    def erase_write(self, page_num):
+        if 0 <= page_num < len(self.pages) and \
+                0 < len(self.pages[page_num]):
+            self.pages[page_num] = self.pages[page_num][:-1]
+
+    def render_page(self, screen, page_num):
+        if 0 <= page_num < len(self.pages):
+            pos_iter = 0
+            total_words = 12 * self.char_per_line
+
+            for text_index in range(0,
+                                    total_words - \
+                                    self.char_per_line,
+                                    self.char_per_line):
+                text = Text(self.pages[page_num][text_index:text_index +
+                                                 self.char_per_line],
+                            (pos_iter + self.char_per_line, text_index),
+                            self.font_size, "impact", BLACK, None)
+                screen.blit(text.text_img, (self.char_per_line,
+                                            text.text_rect.y + 20))
+
+            if (total_words - len(self.pages[page_num]) < self.char_per_line) or \
+                    len(self.pages[page_num]) < self.char_per_line:
+                text = Text(
+                    self.pages[page_num][len(self.pages[page_num]) + self.char_per_line:
+                                         12 * self.char_per_line],
+                    (pos_iter + self.char_per_line,
+                     len(self.pages[page_num]) + self.char_per_line),
+                    self.font_size, "impact", BLACK, None)
+                screen.blit(text.text_img, (self.char_per_line,
+                                            text.text_rect.y + 20))
 
 
 class Icon:
