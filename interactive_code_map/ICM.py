@@ -306,6 +306,9 @@ class Map(Scene):
                                         30, 30)
         self.sel_page = 0
         self.text = ""
+        self.last_char = None
+        self.held_char_timer = pygame.time.get_ticks()
+        self.initial_held = pygame.time.get_ticks()
 
     def input(self, pressed, held):
         for action in pressed:
@@ -336,11 +339,27 @@ class Map(Scene):
                         65 <= action <= 90 or \
                         48 <= action <= 57 or \
                         action in [33, 44, 46, 47, 58, 63]:
+                    self.last_char = action
                     self.select_point.description.write_page(self.sel_page,
                                                              action)
+                    self.initial_held = pygame.time.get_ticks()
+                elif action == pygame.K_SPACE:
+                    self.last_char = -14
+                    self.select_point.description.write_page(self.sel_page,
+                                                             -14)
 
                 elif action == pygame.K_BACKSPACE:
+                    self.last_char = None
                     self.select_point.description.erase_write(self.sel_page)
+
+        if self.current_mode == 2 and True in held and \
+                20 < pygame.time.get_ticks() - \
+                self.held_char_timer and \
+                500 < pygame.time.get_ticks() - self.initial_held and \
+                self.last_char:
+            self.select_point.description.write_page(self.sel_page,
+                                                     self.last_char)
+            self.held_char_timer = pygame.time.get_ticks()
 
     def mode_0(self):
         # Move and add points
@@ -647,9 +666,11 @@ class Description:
         self.pages += [""]
 
     def write_page(self, page_num, letter_num):
-        if 0 <= page_num < len(self.pages) and \
+        if 0 <= page_num < len(self.pages) and 0 < letter_num and \
                 len(self.pages[page_num]) < (12 * self.char_per_line):
             self.pages[page_num] += chr(letter_num)
+        elif letter_num < 0:
+            self.pages[page_num] += " "
 
     def erase_write(self, page_num):
         if 0 <= page_num < len(self.pages) and \
@@ -659,29 +680,29 @@ class Description:
     def render_page(self, screen, page_num):
         if 0 <= page_num < len(self.pages):
             pos_iter = 0
-            total_words = 12 * self.char_per_line
+            total_words = 13 * self.char_per_line
+            end_rect = None
 
             for text_index in range(0,
-                                    total_words - \
+                                    total_words -
                                     self.char_per_line,
                                     self.char_per_line):
                 text = Text(self.pages[page_num][text_index:text_index +
                                                  self.char_per_line],
                             (pos_iter + self.char_per_line, text_index),
                             self.font_size, "impact", BLACK, None)
-                screen.blit(text.text_img, (self.char_per_line,
+                screen.blit(text.text_img, (10,
                                             text.text_rect.y + 20))
+                pos_iter += 1
 
-            if (total_words - len(self.pages[page_num]) < self.char_per_line) or \
-                    len(self.pages[page_num]) < self.char_per_line:
-                text = Text(
-                    self.pages[page_num][len(self.pages[page_num]) + self.char_per_line:
-                                         12 * self.char_per_line],
-                    (pos_iter + self.char_per_line,
-                     len(self.pages[page_num]) + self.char_per_line),
-                    self.font_size, "impact", BLACK, None)
-                screen.blit(text.text_img, (self.char_per_line,
-                                            text.text_rect.y + 20))
+                if 0 < len(self.pages[page_num][text_index:text_index + self.char_per_line]) <= self.char_per_line:
+                    end_rect = pygame.Rect(text.text_rect.width + 20,
+                                           text.text_rect.y + (text.text_rect.height / 2),
+                                           self.font_size / 4, self.font_size)
+
+            # Render typing bar
+            if end_rect:
+                pygame.draw.rect(screen, BLACK, end_rect)
 
 
 class Icon:
