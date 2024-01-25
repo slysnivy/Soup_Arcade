@@ -60,10 +60,10 @@ class MemoryPoint:
             self.dp_titles += [[str(dp.title.text)]]
             self.dp_desc += [[dp.description]]
             self.dp_icons[dp.id] = [dp.icon.color, dp.icon.rect.x,
-                              dp.icon.rect.y, dp.icon.width,
-                              dp.icon.height]
+                                    dp.icon.rect.y, dp.icon.width,
+                                    dp.icon.height]
             self.dp_lines[dp.id] = [[other_dp.id]
-                                 for other_dp in dp.associated]
+                                    for other_dp in dp.associated]
             self.dp_line_colors[dp.id] = dp.line_color
 
     def pickle_dp(self, pickle_path):
@@ -272,8 +272,10 @@ class Map(Scene):
         We reserve 0 for no options
         """
         self.render_modes = [self.render_mode_0,
-                             self.render_mode_1]
-        self.current_render = 0
+                             self.render_mode_0,
+                             self.render_mode_1,
+                             self.render_mode_2]
+        # Render modes reflect self.current_mode as well
 
         self.color_options = [DARK_RED, DARK_GREEN, DARK_GREY,
                               RED, LIME_GREEN, GREY,
@@ -307,8 +309,16 @@ class Map(Scene):
         self.sel_page = 0
         self.text = ""
         self.last_char = None
+        self.cap_toggle = False
         self.held_char_timer = pygame.time.get_ticks()
         self.initial_held = pygame.time.get_ticks()
+
+        self.confirm_delete = pygame.Rect(((self.memory.res_width * 2) // 3,
+                                          (self.memory.res_height * 2) // 3,
+                                          30, 30))
+        self.confirm_keep = pygame.Rect((self.memory.res_width // 3,
+                                        (self.memory.res_height * 2) // 3,
+                                        30, 30))
 
     def input(self, pressed, held):
         for action in pressed:
@@ -328,6 +338,10 @@ class Map(Scene):
 
             if self.current_mode == 2:
                 # Typing mode
+
+                if action == pygame.K_CAPSLOCK:
+                    self.cap_toggle = not self.cap_toggle
+
                 """
                 If statement for character finds, in this order:
                     - Lowercase
@@ -335,8 +349,12 @@ class Map(Scene):
                     - Numbers
                     - Then every other crucial key like !, ?, (, ), ,, etc.
                 """
-                if 97 <= action <= 122 or \
-                        65 <= action <= 90 or \
+                if 97 <= action <= 122 and self.cap_toggle:
+                    self.last_char = action - 32
+                    self.select_point.description.write_page(self.sel_page,
+                                                             action - 32)
+                    self.initial_held = pygame.time.get_ticks()
+                elif 97 <= action <= 122 or \
                         48 <= action <= 57 or \
                         action in [33, 44, 46, 47, 58, 63]:
                     self.last_char = action
@@ -347,16 +365,19 @@ class Map(Scene):
                     self.last_char = -14
                     self.select_point.description.write_page(self.sel_page,
                                                              -14)
-
+                    self.initial_held = pygame.time.get_ticks()
                 elif action == pygame.K_BACKSPACE:
-                    self.last_char = None
+                    self.last_char = 0
                     self.select_point.description.erase_write(self.sel_page)
+                    self.initial_held = pygame.time.get_ticks()
+                else:
+                    self.last_char = None
 
         if self.current_mode == 2 and True in held and \
                 20 < pygame.time.get_ticks() - \
                 self.held_char_timer and \
                 500 < pygame.time.get_ticks() - self.initial_held and \
-                self.last_char:
+                self.last_char is not None:
             self.select_point.description.write_page(self.sel_page,
                                                      self.last_char)
             self.held_char_timer = pygame.time.get_ticks()
@@ -390,8 +411,6 @@ class Map(Scene):
             # Edit options when clicked
             self.current_mode = self.mouse.collidelist(
                 self.edit_options) + 1
-            if self.current_mode == 2:
-                self.current_render = 1
 
         elif check_select:
             # When not clicking on a point
@@ -458,10 +477,15 @@ class Map(Scene):
         # Left click special rect to leave typing interface
         if self.mouse.colliderect(self.confirm_rect):
             self.current_mode = 0
-            self.current_render = 0
 
     def mode_3(self):
-        pass
+        if self.mouse.colliderect(self.confirm_delete):
+            self.current_mode = 0
+            self.show_select = False
+            del self.datapoints[self.datapoints.index(self.select_point)]
+            self.select_point = None
+        elif self.mouse.colliderect(self.confirm_keep):
+            self.current_mode = 0
 
     def update(self):
         if self.select_point is not None and \
@@ -475,7 +499,7 @@ class Map(Scene):
 
     def render(self, screen):
         screen.fill(WHITE)
-        self.render_modes[self.current_render](screen)  # type: ignore
+        self.render_modes[self.current_mode](screen)  # type: ignore
 
     def render_mode_0(self, screen):
         # Render lines under points
@@ -507,31 +531,42 @@ class Map(Scene):
         pygame.draw.rect(screen, LIME_GREEN, self.confirm_rect)
         self.select_point.description.render_page(screen, self.sel_page)
 
+    def render_mode_2(self, screen):
+        delete_text = Text("Do you want to delete this point?",
+                           (self.memory.res_width / 2,
+                            self.memory.res_height / 2),
+                           50, "impact", RED, None)
+
+        self.select_point.render(screen)
+        pygame.draw.rect(screen, DARK_RED, self.confirm_keep)
+        pygame.draw.rect(screen, DARK_GREEN, self.confirm_delete)
+        screen.blit(delete_text.text_img, delete_text.text_rect)
+
     def calculate_mouse(self, point_b):
         """Point a is self.mouse
         Point b is any datapoint
         """
         hitbox_mod = 3  # Radius size, change for more/less cluttering
 
-        if math.sqrt((self.mouse.x - point_b.icon.center[0]) ** 2 + \
+        if math.sqrt((self.mouse.x - point_b.icon.center[0]) ** 2 +
                      (self.mouse.y - point_b.icon.center[
                          1]) ** 2) <= point_b.icon.width * hitbox_mod:
             # Top left corner
             return point_b
         elif math.sqrt((self.mouse.x + self.mouse.width -
-                        point_b.icon.center[0]) ** 2 + \
+                        point_b.icon.center[0]) ** 2 +
                        (self.mouse.y - point_b.icon.center[
                            1]) ** 2) <= point_b.icon.width * hitbox_mod:
             # Top right corner
             return point_b
-        elif math.sqrt((self.mouse.x - point_b.icon.center[0]) ** 2 + \
+        elif math.sqrt((self.mouse.x - point_b.icon.center[0]) ** 2 +
                        (self.mouse.y + self.mouse.height -
                         point_b.icon.center[
                             1]) ** 2) <= point_b.icon.width * hitbox_mod:
             # Bottom left corner
             return point_b
         elif math.sqrt((self.mouse.x + self.mouse.width -
-                        point_b.icon.center[0]) ** 2 + \
+                        point_b.icon.center[0]) ** 2 +
                        (self.mouse.y + self.mouse.height -
                         point_b.icon.center[
                             1]) ** 2) <= point_b.icon.width * hitbox_mod:
@@ -661,6 +696,8 @@ class Description:
         self.pages = [""]
         self.char_per_line = 40
         self.font_size = 40
+        self.blink_timer = 0
+        self.current_page = []
 
     def add_page(self):
         self.pages += [""]
@@ -671,14 +708,61 @@ class Description:
             self.pages[page_num] += chr(letter_num)
         elif letter_num < 0:
             self.pages[page_num] += " "
+        else:
+            self.erase_write(page_num)
+        self.split_text(page_num)
 
     def erase_write(self, page_num):
         if 0 <= page_num < len(self.pages) and \
                 0 < len(self.pages[page_num]):
             self.pages[page_num] = self.pages[page_num][:-1]
+            self.split_text(page_num)
+
+    def split_text(self, page_num):
+        line_list = []
+        check_text = Text("", (self.char_per_line, len(line_list) *
+                               self.font_size * 4 / 5), self.font_size,
+                          "impact", BLACK, None)
+        for each_char in self.pages[page_num]:
+            if check_text.text_rect.width < 1280 - self.font_size:
+                check_text.text += each_char
+                check_text.render()
+            else:
+                line_list += [check_text.text]
+                check_text.text = each_char
+                check_text.render()
+        print(self.current_page)
+        self.current_page = line_list + [check_text.text]
 
     def render_page(self, screen, page_num):
-        if 0 <= page_num < len(self.pages):
+        line_iter = 0
+        end_rect = None
+
+        for each_line in self.current_page:
+            text = Text(each_line, (0, 0), self.font_size, "impact",
+                        BLACK, None)
+            screen.blit(text.text_img, (10, line_iter * (self.font_size + 20)))
+            end_rect = pygame.Rect(text.text_rect.width + 15,
+                                           line_iter * (self.font_size + 20),
+                                           self.font_size / 8, self.font_size)
+            line_iter += 1
+
+        # Render typing bar
+        if 0 < pygame.time.get_ticks() - self.blink_timer < 700:
+            if end_rect:
+                pygame.draw.rect(screen, BLACK, end_rect)
+            else:
+                pygame.draw.rect(screen,
+                                 BLACK,
+                                 [10, 5,
+                                  self.font_size / 8, self.font_size])
+
+        if 1400 < pygame.time.get_ticks() - self.blink_timer:
+            self.blink_timer = pygame.time.get_ticks()
+
+
+        # Old rendering with an integer limit
+        """if 0 <= page_num < len(self.pages):
             pos_iter = 0
             total_words = 13 * self.char_per_line
             end_rect = None
@@ -695,14 +779,26 @@ class Description:
                                             text.text_rect.y + 20))
                 pos_iter += 1
 
-                if 0 < len(self.pages[page_num][text_index:text_index + self.char_per_line]) <= self.char_per_line:
+                if 0 < len(self.pages[page_num][
+                           text_index:text_index + self.char_per_line]) <= \
+                        self.char_per_line:
                     end_rect = pygame.Rect(text.text_rect.width + 20,
-                                           text.text_rect.y + (text.text_rect.height / 2),
+                                           text.text_rect.y +
+                                           (text.text_rect.height / 2),
                                            self.font_size / 4, self.font_size)
 
             # Render typing bar
-            if end_rect:
-                pygame.draw.rect(screen, BLACK, end_rect)
+            if 0 < pygame.time.get_ticks() - self.blink_timer < 700:
+                if end_rect:
+                    pygame.draw.rect(screen, BLACK, end_rect)
+                else:
+                    pygame.draw.rect(screen,
+                                     BLACK,
+                                     [10, 5,
+                                      self.font_size / 4, self.font_size])
+
+            if 1400 < pygame.time.get_ticks() - self.blink_timer:
+                self.blink_timer = pygame.time.get_ticks()"""
 
 
 class Icon:
