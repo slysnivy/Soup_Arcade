@@ -58,7 +58,7 @@ class MemoryPoint:
     def comp_dp(self, dp_list):
         for dp in dp_list:
             self.dp_titles += [[str(dp.title.text)]]
-            self.dp_desc += [[dp.description]]
+            self.dp_desc += [dp.description]
             self.dp_icons[dp.id] = [dp.icon.color, dp.icon.rect.x,
                                     dp.icon.rect.y, dp.icon.width,
                                     dp.icon.height]
@@ -98,6 +98,9 @@ class MemoryPoint:
                                            (self.dp_icons[dp_id][2]))
             new_point.change_icon_color(self.dp_icons[dp_id][0])
             new_point.change_id(dp_id)
+            new_point.description = self.dp_desc[dp_id]
+            new_point.description.split_text(new_point.sel_page)
+
             dp_list += [new_point]
             dp_dict[dp_id] = new_point
         # Make lines by establishing connections in our current datapoints
@@ -282,6 +285,7 @@ class Map(Scene):
                               BLUE, YELLOW, ORANGE,
                               CYAN, PURPLE]
         self.rect_colors = []
+        self.line_col_ind = 0
         x, y = 0, 0
         width, height = 20, 20
         color_per_row = 3
@@ -305,8 +309,10 @@ class Map(Scene):
 
         self.confirm_rect = pygame.Rect(self.memory.res_width - 30,
                                         self.memory.res_height - 30,
-                                        30, 30)
-        self.sel_page = 0
+                                        30, 30)     # Exit description mode
+        self.desc_right = pygame.Rect(self.memory.res_width - 30,
+                                      self.memory.res_height - 90, 30, 30)      # Go right/next page
+        self.desc_left = pygame.Rect(30, self.memory.res_height - 90, 30, 30)   # Go left/previous page
         self.text = ""
         self.last_char = None
         self.cap_toggle = False
@@ -315,10 +321,10 @@ class Map(Scene):
 
         self.confirm_delete = pygame.Rect(((self.memory.res_width * 2) // 3,
                                           (self.memory.res_height * 2) // 3,
-                                          30, 30))
+                                          30, 30))      # Click to delete a point
         self.confirm_keep = pygame.Rect((self.memory.res_width // 3,
                                         (self.memory.res_height * 2) // 3,
-                                        30, 30))
+                                        30, 30))        # Click to not delete a point
 
     def input(self, pressed, held):
         for action in pressed:
@@ -327,7 +333,7 @@ class Map(Scene):
                 self.mouse.y = pygame.mouse.get_pos()[1]
 
             if action == pygame.MOUSEBUTTONDOWN:
-                # Different modes when left clicked
+                # Different modes when pressing left click
                 self.edit_modes[self.current_mode]()
 
             if action == pygame.MOUSEBUTTONUP and self.follow_mouse:
@@ -351,24 +357,24 @@ class Map(Scene):
                 """
                 if 97 <= action <= 122 and self.cap_toggle:
                     self.last_char = action - 32
-                    self.select_point.description.write_page(self.sel_page,
+                    self.select_point.description.write_page(self.select_point.sel_page,
                                                              action - 32)
                     self.initial_held = pygame.time.get_ticks()
                 elif 97 <= action <= 122 or \
                         48 <= action <= 57 or \
                         action in [33, 44, 46, 47, 58, 63]:
                     self.last_char = action
-                    self.select_point.description.write_page(self.sel_page,
+                    self.select_point.description.write_page(self.select_point.sel_page,
                                                              action)
                     self.initial_held = pygame.time.get_ticks()
                 elif action == pygame.K_SPACE:
                     self.last_char = -14
-                    self.select_point.description.write_page(self.sel_page,
+                    self.select_point.description.write_page(self.select_point.sel_page,
                                                              -14)
                     self.initial_held = pygame.time.get_ticks()
                 elif action == pygame.K_BACKSPACE:
                     self.last_char = 0
-                    self.select_point.description.erase_write(self.sel_page)
+                    self.select_point.description.erase_write(self.select_point.sel_page)
                     self.initial_held = pygame.time.get_ticks()
                 else:
                     self.last_char = None
@@ -378,7 +384,7 @@ class Map(Scene):
                 self.held_char_timer and \
                 500 < pygame.time.get_ticks() - self.initial_held and \
                 self.last_char is not None:
-            self.select_point.description.write_page(self.sel_page,
+            self.select_point.description.write_page(self.select_point.sel_page,
                                                      self.last_char)
             self.held_char_timer = pygame.time.get_ticks()
 
@@ -442,8 +448,11 @@ class Map(Scene):
     def mode_1(self):
         # On left click, find a valid point to click on that's not our point
 
+        # Change color of lines added
+        if -1 < self.mouse.collidelist(self.rect_colors):
+            self.line_col_ind = self.mouse.collidelist(self.rect_colors)
         # Adding or removing a line on left click
-        if 1 < len(self.datapoints):
+        elif 1 < len(self.datapoints):
             find_point = False
             point_index = 0
             while not find_point and point_index < len(self.datapoints):
@@ -459,7 +468,7 @@ class Map(Scene):
                     self.select_point in find_point.associated:
                 find_point.remove_point(self.select_point)
             elif find_point:
-                self.select_point.add_point(find_point)
+                self.select_point.add_point(find_point, self.color_options[self.line_col_ind])
             else:
                 self.select_point = None
                 self.show_select = False
@@ -473,6 +482,15 @@ class Map(Scene):
     def mode_2(self):
         # On left click, start typing
         # todo: Add a left click to select where text goes
+        # Press left and right to move onto the next page
+        if self.mouse.colliderect(self.desc_right):
+            if len(self.select_point.description.pages) - 1 < self.select_point.sel_page:
+                self.select_point.description.add_page()
+            self.select_point.sel_page += 1
+            self.select_point.description.split_text(self.select_point.sel_page)
+        elif 0 < self.select_point.sel_page and self.mouse.colliderect(self.desc_left):
+            self.select_point.sel_page -= 1
+            self.select_point.description.split_text(self.select_point.sel_page)
 
         # Left click special rect to leave typing interface
         if self.mouse.colliderect(self.confirm_rect):
@@ -529,7 +547,9 @@ class Map(Scene):
 
     def render_mode_1(self, screen):
         pygame.draw.rect(screen, LIME_GREEN, self.confirm_rect)
-        self.select_point.description.render_page(screen, self.sel_page)
+        self.select_point.description.render_page(screen, self.select_point.sel_page)
+        pygame.draw.rect(screen, YELLOW, self.desc_right)
+        pygame.draw.rect(screen, YELLOW, self.desc_left)
 
     def render_mode_2(self, screen):
         delete_text = Text("Do you want to delete this point?",
@@ -628,6 +648,7 @@ class DataPoint:
         self.associated = []  # Other points related/connecting to this one
         self.line_color = []  # Line colors for connecting related points
         self.id = 0
+        self.sel_page = 0
 
     def change_title(self, in_text):
         self.title.text = in_text
@@ -659,10 +680,10 @@ class DataPoint:
     def change_id(self, new_id):
         self.id = new_id
 
-    def add_point(self, in_point):
+    def add_point(self, in_point, line_color):
         # Add associated points to connect to this one
         self.associated += [in_point]
-        self.line_color += [RED]
+        self.line_color += [line_color]
 
     def remove_point(self, in_point):
         point_index = self.associated.index(in_point)
@@ -731,7 +752,6 @@ class Description:
                 line_list += [check_text.text]
                 check_text.text = each_char
                 check_text.render()
-        print(self.current_page)
         self.current_page = line_list + [check_text.text]
 
     def render_page(self, screen, page_num):
@@ -759,7 +779,6 @@ class Description:
 
         if 1400 < pygame.time.get_ticks() - self.blink_timer:
             self.blink_timer = pygame.time.get_ticks()
-
 
         # Old rendering with an integer limit
         """if 0 <= page_num < len(self.pages):
