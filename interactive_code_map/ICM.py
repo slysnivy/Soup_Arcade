@@ -254,16 +254,19 @@ class Map(Scene):
 
         self.x_offset = 0
         self.y_offset = 0
+        self.dir_delay = pygame.time.get_ticks()
 
         self.follow_mouse = False
 
         self.edit_options = [pygame.Rect(1, 1, 1, 1),  # Make connections
                              pygame.Rect(2, 2, 1, 1),  # None
-                             pygame.Rect(3, 3, 1, 1)]  # None
+                             pygame.Rect(3, 3, 1, 1),
+                             pygame.Rect(4, 4, 1, 1)]  # None
         self.edit_modes = [self.mode_0,
                            self.mode_1,
                            self.mode_2,
-                           self.mode_3
+                           self.mode_3,
+                           self.mode_4
                            ]
         self.current_mode = 0
         """
@@ -277,7 +280,8 @@ class Map(Scene):
         self.render_modes = [self.render_mode_0,
                              self.render_mode_0,
                              self.render_mode_1,
-                             self.render_mode_2]
+                             self.render_mode_2,
+                             self.render_mode_3]
         # Render modes reflect self.current_mode as well
 
         self.color_options = [DARK_RED, DARK_GREEN, DARK_GREY,
@@ -326,6 +330,10 @@ class Map(Scene):
                                         (self.memory.res_height * 2) // 3,
                                         30, 30))        # Click to not delete a point
 
+        self.confirm_title = pygame.Rect(self.memory.res_width / 2,
+                                         (self.memory.res_height / 2) + 60,
+                                         30, 30)
+
     def input(self, pressed, held):
         for action in pressed:
             if action == pygame.MOUSEMOTION:
@@ -333,6 +341,12 @@ class Map(Scene):
                 self.mouse.y = pygame.mouse.get_pos()[1]
 
             if action == pygame.MOUSEBUTTONDOWN:
+                # This can be put here since only current_mode 4 is only being affected
+                if self.current_mode == 4:
+                    self.select_point.title.font_size = 30
+                    self.select_point.title.setup()
+                    self.select_point.title.render()
+
                 # Different modes when pressing left click
                 self.edit_modes[self.current_mode]()
 
@@ -341,6 +355,16 @@ class Map(Scene):
 
             if action == pygame.K_ESCAPE:
                 self.run_scene = False
+
+            if self.current_mode == 1 or self.current_mode == 0:
+                if action == pygame.K_w:
+                    self.y_offset += 5
+                elif action == pygame.K_s:
+                    self.y_offset -= 5
+                if action == pygame.K_a:
+                    self.x_offset += 5
+                elif action == pygame.K_d:
+                    self.x_offset -= 5
 
             if self.current_mode == 2:
                 # Typing mode
@@ -379,6 +403,30 @@ class Map(Scene):
                 else:
                     self.last_char = None
 
+            elif self.current_mode == 4:
+                if action == pygame.K_CAPSLOCK:
+                    self.cap_toggle = not self.cap_toggle
+                if 97 <= action <= 122 and self.cap_toggle:
+                    self.last_char = action - 32
+                    self.select_point.change_title(action - 32)
+                    self.initial_held = pygame.time.get_ticks()
+                elif 97 <= action <= 122 or \
+                        48 <= action <= 57 or \
+                        action in [33, 44, 46, 47, 58, 63]:
+                    self.last_char = action
+                    self.select_point.change_title(action)
+                    self.initial_held = pygame.time.get_ticks()
+                elif action == pygame.K_SPACE:
+                    self.last_char = -14
+                    self.select_point.change_title(-14)
+                    self.initial_held = pygame.time.get_ticks()
+                elif action == pygame.K_BACKSPACE:
+                    self.last_char = 0
+                    self.select_point.change_title(0)
+                    self.initial_held = pygame.time.get_ticks()
+                else:
+                    self.last_char = None
+
         if self.current_mode == 2 and True in held and \
                 20 < pygame.time.get_ticks() - \
                 self.held_char_timer and \
@@ -387,6 +435,28 @@ class Map(Scene):
             self.select_point.description.write_page(self.select_point.sel_page,
                                                      self.last_char)
             self.held_char_timer = pygame.time.get_ticks()
+        elif self.current_mode == 4 and True in held and \
+                20 < pygame.time.get_ticks() - \
+                self.held_char_timer and \
+                500 < pygame.time.get_ticks() - self.initial_held and \
+                self.last_char is not None:
+            self.select_point.change_title(self.last_char)
+            self.held_char_timer = pygame.time.get_ticks()
+
+        if (self.current_mode == 1 or self.current_mode == 0) and \
+                20 < pygame.time.get_ticks() - self.dir_delay:
+            if held[pygame.K_w]:
+                self.y_offset += 5
+                self.dir_delay = pygame.time.get_ticks()
+            elif held[pygame.K_s]:
+                self.y_offset -= 5
+                self.dir_delay = pygame.time.get_ticks()
+            if held[pygame.K_a]:
+                self.x_offset += 5
+                self.dir_delay = pygame.time.get_ticks()
+            elif held[pygame.K_d]:
+                self.x_offset -= 5
+                self.dir_delay = pygame.time.get_ticks()
 
     def mode_0(self):
         # Move and add points
@@ -411,11 +481,17 @@ class Map(Scene):
 
             point_index += 1
 
-        if -1 < self.mouse.collidelist(self.edit_options) and \
+        # Update mouse position temporarily
+        temp_mouse = pygame.Rect(self.mouse.x - self.x_offset,
+                                 self.mouse.y - self.y_offset,
+                                 self.mouse.width, self.mouse.height)
+        # When not clicking on a point
+
+        if -1 < temp_mouse.collidelist(self.edit_options) and \
                 self.select_point is not None and \
                 self.select_point.icon.display_options:
             # Edit options when clicked
-            self.current_mode = self.mouse.collidelist(
+            self.current_mode = temp_mouse.collidelist(
                 self.edit_options) + 1
 
         elif check_select:
@@ -428,8 +504,8 @@ class Map(Scene):
                 # Make a new point, only if it's far away from other points
                 # Only make a new point once we deselected our point
                 new_point = DataPoint()
-                new_point.change_icon_location(self.mouse.x,
-                                               self.mouse.y)
+                new_point.change_icon_location(self.mouse.x - self.x_offset,
+                                               self.mouse.y - self.y_offset)
                 new_point.change_id(self.id_count)
                 self.id_count += 1
                 self.datapoints += [new_point]
@@ -484,7 +560,7 @@ class Map(Scene):
         # todo: Add a left click to select where text goes
         # Press left and right to move onto the next page
         if self.mouse.colliderect(self.desc_right):
-            if len(self.select_point.description.pages) - 1 < self.select_point.sel_page:
+            if len(self.select_point.description.pages) - 1 <= self.select_point.sel_page:
                 self.select_point.description.add_page()
             self.select_point.sel_page += 1
             self.select_point.description.split_text(self.select_point.sel_page)
@@ -505,14 +581,23 @@ class Map(Scene):
         elif self.mouse.colliderect(self.confirm_keep):
             self.current_mode = 0
 
+    def mode_4(self):
+        if self.mouse.colliderect(self.confirm_title):
+            self.select_point.title.font_size = 12
+            self.select_point.title.setup()
+            self.select_point.title.render()
+            self.current_mode = 0
+            self.select_point = None
+            self.show_select = False
+
     def update(self):
         if self.select_point is not None and \
                 not self.select_point.icon.display_options:
             self.select_point = None
 
         if self.follow_mouse and self.select_point is not None:
-            self.select_point.change_icon_location(self.mouse.x,
-                                                   self.mouse.y)
+            self.select_point.change_icon_location(self.mouse.x - self.x_offset,
+                                                   self.mouse.y - self.y_offset)
             self.update_option_pos()
 
     def render(self, screen):
@@ -520,9 +605,11 @@ class Map(Scene):
         self.render_modes[self.current_mode](screen)  # type: ignore
 
     def render_mode_0(self, screen):
+        # Default rendering mode
+
         # Render lines under points
         for each_point in self.datapoints:
-            each_point.render_lines(screen)
+            each_point.render_lines(screen, self.x_offset, self.y_offset)
 
         # Render points
         for each_point in self.datapoints:
@@ -530,15 +617,21 @@ class Map(Scene):
                 # Turn points to rects to show that it's clickable
                 each_point.change_icon_border(0)
             else:
-                # Circle default rendering
+                # Circle default rendering with title/text above them
                 each_point.change_icon_border(100)
-            each_point.render(screen)
+                screen.blit(each_point.title.text_img,
+                            [each_point.icon.center[0]- (each_point.title.text_rect.width / 2),
+                             each_point.icon.center[1] - (each_point.title.text_rect.height)])
+            each_point.render(screen, self.x_offset, self.y_offset)
 
         # Render options
         if self.select_point and \
                 self.select_point.icon.display_options:
             for each_option in self.edit_options:
-                pygame.draw.rect(screen, ORANGE, each_option, 1)
+                pygame.draw.rect(screen, ORANGE, [each_option.x + self.x_offset,
+                                                  each_option.y + self.y_offset,
+                                                  each_option.width,
+                                                  each_option.height], 1)
 
         # Render color options
         if self.select_point:
@@ -557,10 +650,15 @@ class Map(Scene):
                             self.memory.res_height / 2),
                            50, "impact", RED, None)
 
-        self.select_point.render(screen)
+        self.select_point.render(screen, 0, 0)
         pygame.draw.rect(screen, DARK_RED, self.confirm_keep)
         pygame.draw.rect(screen, DARK_GREEN, self.confirm_delete)
         screen.blit(delete_text.text_img, delete_text.text_rect)
+
+    def render_mode_3(self, screen):
+        screen.blit(self.select_point.title.text_img,
+                    self.select_point.title.text_rect)
+        pygame.draw.rect(screen, LIME_GREEN, self.confirm_title)
 
     def calculate_mouse(self, point_b):
         """Point a is self.mouse
@@ -568,26 +666,26 @@ class Map(Scene):
         """
         hitbox_mod = 3  # Radius size, change for more/less cluttering
 
-        if math.sqrt((self.mouse.x - point_b.icon.center[0]) ** 2 +
-                     (self.mouse.y - point_b.icon.center[
+        if math.sqrt((self.mouse.x - self.x_offset - point_b.icon.center[0]) ** 2 +
+                     (self.mouse.y - self.y_offset - point_b.icon.center[
                          1]) ** 2) <= point_b.icon.width * hitbox_mod:
             # Top left corner
             return point_b
-        elif math.sqrt((self.mouse.x + self.mouse.width -
+        elif math.sqrt((self.mouse.x - self.x_offset + self.mouse.width -
                         point_b.icon.center[0]) ** 2 +
-                       (self.mouse.y - point_b.icon.center[
+                       (self.mouse.y - self.y_offset - point_b.icon.center[
                            1]) ** 2) <= point_b.icon.width * hitbox_mod:
             # Top right corner
             return point_b
-        elif math.sqrt((self.mouse.x - point_b.icon.center[0]) ** 2 +
-                       (self.mouse.y + self.mouse.height -
+        elif math.sqrt((self.mouse.x - self.x_offset - point_b.icon.center[0]) ** 2 +
+                       (self.mouse.y - self.y_offset + self.mouse.height -
                         point_b.icon.center[
                             1]) ** 2) <= point_b.icon.width * hitbox_mod:
             # Bottom left corner
             return point_b
-        elif math.sqrt((self.mouse.x + self.mouse.width -
+        elif math.sqrt((self.mouse.x - self.x_offset + self.mouse.width -
                         point_b.icon.center[0]) ** 2 +
-                       (self.mouse.y + self.mouse.height -
+                       (self.mouse.y - self.y_offset + self.mouse.height -
                         point_b.icon.center[
                             1]) ** 2) <= point_b.icon.width * hitbox_mod:
             # Bottom right corner
@@ -642,7 +740,7 @@ class Map(Scene):
 
 class DataPoint:
     def __init__(self):
-        self.title = Text("", [0, 0], 24, "impact", BLACK, None)
+        self.title = Text("", [1280 / 2, 720 / 2], 24, "impact", BLACK, None)
         self.description = Description()
         self.icon = Icon(LIME_GREEN, [0, 0], 5, 5)
         self.associated = []  # Other points related/connecting to this one
@@ -651,7 +749,13 @@ class DataPoint:
         self.sel_page = 0
 
     def change_title(self, in_text):
-        self.title.text = in_text
+        if 0 <= len(self.title.text) < 30 and in_text not in [-14, 0]:
+            self.title.text += chr(in_text)
+        elif in_text == -14 and len(self.title.text) < 30:
+            self.title.text += " "
+        elif in_text == 0 and 0 < len(self.title.text):
+            self.title.text = self.title.text[:-1]
+        self.title.render()
 
     def change_description(self, in_desc):
         self.description = [""]
@@ -693,23 +797,24 @@ class DataPoint:
     def update(self):
         pass
 
-    def render(self, screen):
-        self.icon.render(screen)
+    def render(self, screen, x_offset, y_offset):
+        self.icon.render(screen, x_offset, y_offset)
 
-    def render_lines(self, screen):
+    def render_lines(self, screen, x_offset, y_offset):
         if 0 < len(self.associated):
             for li in range(len(self.associated)):
                 # Line Shadow
                 pygame.draw.line(screen, DARK_GREY,
-                                 (self.icon.center[0] + 1,
-                                  self.icon.center[1] + 1),
-                                 (self.associated[li].icon.center[0] + 1,
-                                  self.associated[li].icon.center[1] + 1), 2)
+                                 (self.icon.center[0] + x_offset + 1,
+                                  self.icon.center[1] + y_offset + 1),
+                                 (self.associated[li].icon.center[0] + x_offset + 1,
+                                  self.associated[li].icon.center[1] + y_offset + 1), 2)
 
                 # Actual Line
                 pygame.draw.line(screen, self.line_color[li],
-                                 self.icon.center,
-                                 self.associated[li].icon.center, 2)
+                                 (self.icon.center[0] + x_offset, self.icon.center[1] + y_offset),
+                                 (self.associated[li].icon.center[0] + x_offset,
+                                  self.associated[li].icon.center[1] + y_offset), 2)
 
 
 class Description:
@@ -834,13 +939,17 @@ class Icon:
                                        location[1] + height // 3,
                                        width, height)
 
-    def render(self, screen):
+    def render(self, screen, x_offset, y_offset):
         # Icon shadow
-        pygame.draw.rect(screen, DARK_GREY, self.shadow_rect,
+        pygame.draw.rect(screen, DARK_GREY, [self.shadow_rect.x + x_offset,
+                                             self.shadow_rect.y + y_offset,
+                                             self.shadow_rect.width, self.shadow_rect.height],
                          border_radius=self.border)
 
         # Actual icon/button
-        pygame.draw.rect(screen, self.color, self.rect,
+        pygame.draw.rect(screen, self.color, [self.rect.x + x_offset,
+                                              self.rect.y + y_offset,
+                                              self.rect.width, self.rect.height],
                          border_radius=self.border)
 
 
