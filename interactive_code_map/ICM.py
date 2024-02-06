@@ -33,6 +33,7 @@ class Memory:
         self.dp = []
         self.memory_manager = MemoryPoint()
         self.dp = self.memory_manager.depickle_dp("save")
+        self.screen = None
 
     def load_game(self):
         """ Load previous game instance, usually from a text_file"""
@@ -57,7 +58,7 @@ class MemoryPoint:
 
     def comp_dp(self, dp_list):
         for dp in dp_list:
-            self.dp_titles += [[str(dp.title.text)]]
+            self.dp_titles += [str(dp.title.text)]
             self.dp_desc += [dp.description]
             self.dp_icons[dp.id] = [dp.icon.color, dp.icon.rect.x,
                                     dp.icon.rect.y, dp.icon.width,
@@ -94,6 +95,10 @@ class MemoryPoint:
         for dp_id in all_id:
             new_point = DataPoint()
             # todo: add more stuff to dp and method call here respectively
+            new_point.title.text = self.dp_titles[dp_id]
+            new_point.title.font_size = 12
+            new_point.title.setup()
+            new_point.title.render()
             new_point.change_icon_location(self.dp_icons[dp_id][1],
                                            (self.dp_icons[dp_id][2]))
             new_point.change_icon_color(self.dp_icons[dp_id][0])
@@ -333,6 +338,19 @@ class Map(Scene):
         self.confirm_title = pygame.Rect(self.memory.res_width / 2,
                                          (self.memory.res_height / 2) + 60,
                                          30, 30)
+
+        img_path = "assets/images/"
+        self.option_imgs = [None, None, None, None]
+        self.confirm_img = pygame.image.load(img_path +
+                                             "ICM_ID1_48x48_Check.png").convert_alpha()
+        self.decline_img = pygame.image.load(img_path +
+                                             "ICM_ID0_48x48_X.png").convert_alpha()
+        op_1 = pygame.image.load(img_path + "ICM_ID2_48x48_LineConnect.png").convert_alpha()
+        op_2 = pygame.image.load(img_path + "ICM_ID3_48x48_TypeDesc.png").convert_alpha()
+        self.option_imgs = [pygame.transform.scale(op_1, [20, 20]),
+                            pygame.transform.scale(op_2, [20, 20]),
+                            None,
+                            None]
 
     def input(self, pressed, held):
         for action in pressed:
@@ -620,18 +638,25 @@ class Map(Scene):
                 # Circle default rendering with title/text above them
                 each_point.change_icon_border(100)
                 screen.blit(each_point.title.text_img,
-                            [each_point.icon.center[0]- (each_point.title.text_rect.width / 2),
-                             each_point.icon.center[1] - (each_point.title.text_rect.height)])
+                            [each_point.icon.center[0] - (each_point.title.text_rect.width / 2) + self.x_offset,
+                             each_point.icon.center[1] - (each_point.title.text_rect.height) + self.y_offset])
             each_point.render(screen, self.x_offset, self.y_offset)
 
         # Render options
         if self.select_point and \
                 self.select_point.icon.display_options:
-            for each_option in self.edit_options:
-                pygame.draw.rect(screen, ORANGE, [each_option.x + self.x_offset,
-                                                  each_option.y + self.y_offset,
-                                                  each_option.width,
-                                                  each_option.height], 1)
+            for op_ind in range(len(self.edit_options)):
+                pygame.draw.rect(screen, ORANGE, [self.edit_options[op_ind].x + self.x_offset,
+                                                  self.edit_options[op_ind].y + self.y_offset,
+                                                  self.edit_options[op_ind].width,
+                                                  self.edit_options[op_ind].height], 1)
+                if self.option_imgs[op_ind] is not None:
+                    screen.blit(self.option_imgs[op_ind], [self.edit_options[op_ind].x + self.x_offset,
+                                                  self.edit_options[op_ind].y + self.y_offset,
+                                                  self.edit_options[op_ind].width,
+                                                  self.edit_options[op_ind].height])
+
+                # Render the options images on top
 
         # Render color options
         if self.select_point:
@@ -1011,6 +1036,7 @@ class Program:
         """
         # self.memory.screen = pygame.display.set_mode([width, height])
         screen = pygame.display.set_mode([width, height])  # Set screen size
+        self.memory.screen = screen
 
         pygame.scrap.init()
         if not pygame.scrap.get_init():
@@ -1076,6 +1102,7 @@ if __name__ == "__main__":
     # Alter these values to change the resolution
     game_width = 1280
     game_height = 700
+    pygame.display.set_mode([game_width, game_height])
 
     file_path = "put_icon_file_path_here"
     """pygame.display.set_caption("display_window") # game window caption
